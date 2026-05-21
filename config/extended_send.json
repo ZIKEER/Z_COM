@@ -1,0 +1,36 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "data": "",
+      "is_hex": false,
+      "comment": "哈哈哈哈哈哈哈哈哈",
+      "delay": 1000,
+      "enabled": false,
+      "sort_order": 0
+    },
+    {
+      "id": 2,
+      "data": "AE 86 04 F0 FB BB BD",
+      "is_hex": true,
+      "comment": "中旗查日志",
+      "delay": 1000,
+      "enabled": false,
+      "sort_order": 1
+    },
+    {
+      "id": 3,
+      "data": "",
+      "is_hex": false,
+      "comment": "",
+      "delay": 1000,
+      "enabled": true,
+      "sort_order": 2
+    }
+  ],
+  "settings": {
+    "loop_send": false,
+    "multi_send": true,
+    "default_delay": 1000
+  }
+}
