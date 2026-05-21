@@ -5,9 +5,15 @@ import json
 class ConfigManager:
     """配置管理类"""
     
-    def __init__(self, config_dir="config"):
-        self.config_dir = config_dir
-        self.config_file = os.path.join(config_dir, "settings.json")
+    def __init__(self, config_dir=None, instance_id=1):
+        if config_dir:
+            self.config_dir = config_dir
+        elif instance_id > 1:
+            self.config_dir = os.path.join(f"instance_{instance_id}", "config")
+        else:
+            self.config_dir = "config"
+        
+        self.config_file = os.path.join(self.config_dir, "settings.json")
         self.default_config = {
             'port': '',
             'baudrate': '115200',
@@ -15,10 +21,16 @@ class ConfigManager:
             'stopbits': '1',
             'parity': 'None',
             'flowcontrol': 'None',
-            'display_mode': 'ASCII',  # HEX, ASCII, MIXED
-            'send_mode': 'ASCII',     # ASCII, HEX
+            'display_mode': 'ASCII',
+            'send_mode': 'ASCII',
             'auto_scroll': True,
-            'auto_send_interval': 1000
+            'auto_send_interval': 1000,
+            'rtt_chip': '',
+            'rtt_speed': 4000,
+            'rtt_reset': False,
+            'rtt_start_address': '',
+            'rtt_range_size': '',
+            'rtt_chip_history': [],
         }
         self.config = self.default_config.copy()
         self._load_config()
@@ -63,3 +75,28 @@ class ConfigManager:
             'parity': self.config.get('parity', 'None'),
             'flowcontrol': self.config.get('flowcontrol', 'None')
         }
+
+    def get_rtt_settings(self):
+        """获取 RTT 设置"""
+        return {
+            'chip': self.config.get('rtt_chip', ''),
+            'speed': int(self.config.get('rtt_speed', 4000)),
+            'reset': self.config.get('rtt_reset', False),
+            'start_address': self.config.get('rtt_start_address', ''),
+            'range_size': self.config.get('rtt_range_size', ''),
+            'chip_history': self.config.get('rtt_chip_history', []),
+        }
+
+    def add_rtt_chip_history(self, chip):
+        """添加芯片到历史记录"""
+        if not chip or not chip.strip():
+            return
+        chip = chip.strip()
+        history = self.config.get('rtt_chip_history', [])
+        if chip in history:
+            history.remove(chip)
+        history.insert(0, chip)
+        if len(history) > 20:
+            history = history[:20]
+        self.config['rtt_chip_history'] = history
+        self._save_config()

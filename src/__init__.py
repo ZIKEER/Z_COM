@@ -1,1 +1,1 @@
-# SerialComm - 串口助手工具
+# Z_COM - 串口调试工具

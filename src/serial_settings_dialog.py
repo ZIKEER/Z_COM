@@ -11,8 +11,9 @@ class SerialSettingsDialog(QDialog):
     """串口设置对话框"""
     
     settings_changed = Signal(dict)
+    rtt_settings_changed = Signal(dict)
     
-    def __init__(self, current_settings=None, parent=None):
+    def __init__(self, current_settings=None, rtt_settings=None, parent=None):
         super().__init__(parent)
         self.ui = Ui_SerialSettingsDialog()
         self.ui.setupUi(self)
@@ -21,6 +22,8 @@ class SerialSettingsDialog(QDialog):
         
         if current_settings:
             self._load_settings(current_settings)
+        if rtt_settings:
+            self._load_rtt_settings(rtt_settings)
     
     def _init_ui(self):
         """初始化界面"""
@@ -49,7 +52,7 @@ class SerialSettingsDialog(QDialog):
         self.ui.buttonBox.rejected.connect(self.reject)
     
     def _load_settings(self, settings):
-        """加载当前设置"""
+        """加载串口设置"""
         if 'databits' in settings:
             self.ui.databitsComboBox.setCurrentText(str(settings['databits']))
         if 'stopbits' in settings:
@@ -58,18 +61,59 @@ class SerialSettingsDialog(QDialog):
             self.ui.parityComboBox.setCurrentText(settings['parity'])
         if 'flowcontrol' in settings:
             self.ui.flowcontrolComboBox.setCurrentText(settings['flowcontrol'])
+        if 'frame_timeout' in settings:
+            self.ui.frameTimeoutSpinBox.setValue(settings['frame_timeout'])
+    
+    def _load_rtt_settings(self, settings):
+        """加载 RTT 设置"""
+        # 加载芯片历史记录到下拉框
+        chip_history = settings.get('chip_history', [])
+        if chip_history:
+            self.ui.rttChipComboBox.addItems(chip_history)
+        
+        # 设置当前芯片
+        if 'chip' in settings and settings['chip']:
+            chip = settings['chip']
+            index = self.ui.rttChipComboBox.findText(chip)
+            if index < 0:
+                # 如果当前芯片不在历史记录中，添加到最前面
+                self.ui.rttChipComboBox.insertItem(0, chip)
+                index = 0
+            self.ui.rttChipComboBox.setCurrentIndex(index)
+        
+        if 'speed' in settings:
+            self.ui.rttSpeedSpinBox.setValue(int(settings['speed']))
+        if 'reset' in settings:
+            self.ui.rttResetCheckBox.setChecked(settings['reset'])
+        if 'start_address' in settings:
+            self.ui.rttStartAddressLineEdit.setText(settings['start_address'])
+        if 'range_size' in settings:
+            self.ui.rttRangeSizeLineEdit.setText(settings['range_size'])
     
     def _on_accept(self):
         """确认按钮点击"""
         settings = self.get_settings()
+        rtt_settings = self.get_rtt_settings()
         self.settings_changed.emit(settings)
+        self.rtt_settings_changed.emit(rtt_settings)
         self.accept()
     
     def get_settings(self):
-        """获取设置"""
+        """获取串口设置"""
         return {
             'databits': int(self.ui.databitsComboBox.currentText()),
             'stopbits': float(self.ui.stopbitsComboBox.currentText()),
             'parity': self.ui.parityComboBox.currentText(),
-            'flowcontrol': self.ui.flowcontrolComboBox.currentText()
+            'flowcontrol': self.ui.flowcontrolComboBox.currentText(),
+            'frame_timeout': self.ui.frameTimeoutSpinBox.value()
+        }
+    
+    def get_rtt_settings(self):
+        """获取 RTT 设置"""
+        return {
+            'chip': self.ui.rttChipComboBox.currentText(),
+            'speed': self.ui.rttSpeedSpinBox.value(),
+            'reset': self.ui.rttResetCheckBox.isChecked(),
+            'start_address': self.ui.rttStartAddressLineEdit.text().strip(),
+            'range_size': self.ui.rttRangeSizeLineEdit.text().strip(),
         }

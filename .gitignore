@@ -38,3 +38,4 @@ logs/*.txt
 .DS_Store
 Thumbs.db
 logs/
+*.spec

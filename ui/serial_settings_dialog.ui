@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>280</width>
-    <height>200</height>
+    <width>380</width>
+    <height>450</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -75,6 +75,157 @@
       <widget class="QComboBox" name="flowcontrolComboBox"/>
      </item>
     </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="frameTimeoutLayout">
+     <item>
+      <widget class="QLabel" name="frameTimeoutLabel">
+       <property name="text">
+        <string>拼包超时：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="frameTimeoutSpinBox">
+       <property name="minimum">
+        <number>10</number>
+       </property>
+       <property name="maximum">
+        <number>1000</number>
+       </property>
+       <property name="value">
+        <number>50</number>
+       </property>
+       <property name="suffix">
+        <string> ms</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="frameTimeoutSpacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="frameTimeoutHint">
+     <property name="text">
+      <string>说明：拼包超时用于将同一帧数据合并显示，超时时间越长合并越多</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="rttGroupBox">
+     <property name="title">
+      <string>RTT 设备配置 (J-Link)</string>
+     </property>
+     <layout class="QVBoxLayout" name="rttVBoxLayout">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <item>
+       <layout class="QGridLayout" name="rttGridLayout">
+        <property name="spacing">
+         <number>6</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="rttChipLabel">
+          <property name="text">
+           <string>芯片型号：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="rttChipComboBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="editable">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="rttSpeedLabel">
+          <property name="text">
+           <string>J-Link 速度：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <layout class="QHBoxLayout" name="rttSpeedLayout">
+          <item>
+           <widget class="QSpinBox" name="rttSpeedSpinBox">
+            <property name="minimum">
+             <number>100</number>
+            </property>
+            <property name="maximum">
+             <number>50000</number>
+            </property>
+            <property name="value">
+             <number>4000</number>
+            </property>
+            <property name="suffix">
+             <string> kHz</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="rttResetCheckBox">
+            <property name="text">
+             <string>连接时复位</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="rttAddressHint">
+        <property name="text">
+         <string>RTT 地址搜索范围（可选，格式：0x20000000 0x4000）：</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="rttAddressLayout">
+        <item>
+         <widget class="QLineEdit" name="rttStartAddressLineEdit">
+          <property name="placeholderText">
+           <string>起始地址（如 0x20000000）</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="rttRangeSizeLineEdit">
+          <property name="placeholderText">
+           <string>范围大小（如 0x4000）</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttonBox">

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-串口助手启动脚本
+Z_COM 启动脚本
 """
 import sys
 import os
