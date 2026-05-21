@@ -13,9 +13,9 @@ class ExtendedSendManager(QObject):
     error_occurred = Signal(str)      # 错误信号
     items_changed = Signal()          # 数据列表改变信号
     
-    def __init__(self, serial_manager, parent=None):
+    def __init__(self, send_func, parent=None):
         super().__init__(parent)
-        self.serial_manager = serial_manager
+        self.send_func = send_func  # 注入的发送函数
         self.items = []  # 扩展发送数据列表
         self.is_sending = False
         self.is_looping = False
@@ -52,7 +52,7 @@ class ExtendedSendManager(QObject):
         except Exception as e:
             print(f"保存扩展发送配置失败: {e}")
     
-    def add_item(self, data, is_hex=True, comment="", delay=1000, enabled=True):
+    def add_item(self, data, is_hex=True, comment="", delay=1000):
         """添加一条数据"""
         item = {
             'id': self._generate_id(),
@@ -60,8 +60,7 @@ class ExtendedSendManager(QObject):
             'is_hex': is_hex,
             'comment': comment,
             'delay': delay,
-            'enabled': enabled,
-            'sort_order': len(self.items)
+            'sort_order': 0
         }
         self.items.append(item)
         self._save_config()
@@ -108,10 +107,10 @@ class ExtendedSendManager(QObject):
             return 1
         return max(item['id'] for item in self.items) + 1
     
-    def get_enabled_items(self):
-        """获取所有启用的数据项，按顺序排列"""
+    def get_sorted_items(self):
+        """获取序号大于0的数据项，按顺序排列"""
         return sorted(
-            [item for item in self.items if item['enabled']],
+            [item for item in self.items if item.get('sort_order', 0) > 0],
             key=lambda x: x['sort_order']
         )
     
@@ -137,13 +136,13 @@ class ExtendedSendManager(QObject):
         self.current_index = 0
         self.send_started.emit()
         
-        enabled_items = self.get_enabled_items()
-        if not enabled_items:
+        sorted_items = self.get_sorted_items()
+        if not sorted_items:
             self.is_sending = False
             self.send_finished.emit()
             return
         
-        self._send_next_item(enabled_items)
+        self._send_next_item(sorted_items)
     
     def _send_next_item(self, items):
         """发送下一条数据"""
@@ -159,7 +158,12 @@ class ExtendedSendManager(QObject):
                 return
         
         item = items[self.current_index]
-        self._send_item(item)
+        success = self._send_item(item)
+        
+        if not success:
+            self.is_sending = False
+            self.send_finished.emit()
+            return
         
         self.send_progress.emit(item['id'], len(items))
         
@@ -173,27 +177,37 @@ class ExtendedSendManager(QObject):
     
     def _on_send_timer_timeout(self):
         """发送延时定时器超时"""
-        enabled_items = self.get_enabled_items()
-        self._send_next_item(enabled_items)
+        sorted_items = self.get_sorted_items()
+        self._send_next_item(sorted_items)
     
     def _send_item(self, item):
-        """发送单条数据"""
+        """发送单条数据，返回是否成功"""
         try:
             data = item['data']
             is_hex = item['is_hex']
             
+            if not data:
+                self.error_occurred.emit("数据为空")
+                return False
+            
             if is_hex:
-                # HEX格式：解析十六进制字符串
                 hex_str = data.replace(' ', '')
                 send_data = bytes.fromhex(hex_str)
             else:
-                # 字符串格式：直接编码
                 send_data = data.encode('utf-8')
             
-            self.serial_manager.send_data(send_data, is_hex=False)
-            self.data_sent.emit(send_data)  # 发射数据已发送信号
+            # 调用注入的发送函数
+            success = self.send_func(send_data)
+            
+            if not success:
+                self.error_occurred.emit("发送失败")
+                return False
+            
+            self.data_sent.emit(send_data)
+            return True
         except Exception as e:
             self.error_occurred.emit(f"发送失败: {str(e)}")
+            return False
     
     def stop_sending(self):
         """停止发送"""

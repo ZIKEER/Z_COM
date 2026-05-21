@@ -15,7 +15,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QHeaderView, QLabel,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QHeaderView, QLabel,
     QPushButton, QSizePolicy, QSpacerItem, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget)
 
@@ -70,11 +70,20 @@ class Ui_ExtendedSendWidget(object):
 
         self.controlLayout.addItem(self.actionSpacer)
 
-        self.loopSendButton = QPushButton(ExtendedSendWidget)
-        self.loopSendButton.setObjectName(u"loopSendButton")
-        self.loopSendButton.setCheckable(True)
+        self.multiSendCheckBox = QCheckBox(ExtendedSendWidget)
+        self.multiSendCheckBox.setObjectName(u"multiSendCheckBox")
 
-        self.controlLayout.addWidget(self.loopSendButton)
+        self.controlLayout.addWidget(self.multiSendCheckBox)
+
+        self.loopSendCheckBox = QCheckBox(ExtendedSendWidget)
+        self.loopSendCheckBox.setObjectName(u"loopSendCheckBox")
+
+        self.controlLayout.addWidget(self.loopSendCheckBox)
+
+        self.startSendButton = QPushButton(ExtendedSendWidget)
+        self.startSendButton.setObjectName(u"startSendButton")
+
+        self.controlLayout.addWidget(self.startSendButton)
 
         self.helpLabel = QLabel(ExtendedSendWidget)
         self.helpLabel.setObjectName(u"helpLabel")
@@ -104,7 +113,9 @@ class Ui_ExtendedSendWidget(object):
         self.deleteButton.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u5220\u9664", None))
         self.moveUpButton.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u4e0a\u79fb", None))
         self.moveDownButton.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u4e0b\u79fb", None))
-        self.loopSendButton.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u5faa\u73af\u53d1\u9001", None))
+        self.multiSendCheckBox.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u591a\u6761\u53d1\u9001", None))
+        self.loopSendCheckBox.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u5faa\u73af\u53d1\u9001", None))
+        self.startSendButton.setText(QCoreApplication.translate("ExtendedSendWidget", u"\u542f\u52a8\u53d1\u9001", None))
         self.helpLabel.setText(QCoreApplication.translate("ExtendedSendWidget", u"?", None))
 #if QT_CONFIG(tooltip)
         self.helpLabel.setToolTip(QCoreApplication.translate("ExtendedSendWidget", u"\u6269\u5c55\u53d1\u9001\u8bf4\u660e\uff1a\n"
@@ -114,7 +125,13 @@ class Ui_ExtendedSendWidget(object):
 "3. \u5ef6\u65f6\uff1a\u53d1\u9001\u540e\u7b49\u5f85\u65f6\u95f4\uff08\u6beb\u79d2\uff09\n"
 "4. \u5de6\u952e\u70b9\u51fb\u53d1\u9001\u6309\u94ae\uff1a\u53d1\u9001\u5355\u6761\u6570\u636e\n"
 "5. \u53f3\u952e\u70b9\u51fb\u53d1\u9001\u6309\u94ae\uff1a\u7f16\u8f91\u6ce8\u91ca\n"
-"6. \u53f3\u952e\u70b9\u51fb\u8868\u683c\uff1a\u5f39\u51fa\u66f4\u591a\u529f\u80fd\u83dc\u5355", None))
+"6. \u53f3\u952e\u70b9\u51fb\u8868\u683c\uff1a\u5f39\u51fa\u66f4\u591a\u529f\u80fd\u83dc\u5355\n"
+"\n"
+"\u542f\u52a8\u53d1\u9001\u6a21\u5f0f\uff1a\n"
+"- \u672a\u52fe\u9009\u591a\u6761+\u672a\u52fe\u9009\u5faa\u73af\uff1a\u53d1\u9001\u5e8f\u53f71\u7684\u6761\u76ee\u4e00\u6b21\n"
+"- \u672a\u52fe\u9009\u591a\u6761+\u52fe\u9009\u5faa\u73af\uff1a\u5faa\u73af\u53d1\u9001\u5e8f\u53f71\u7684\u6761\u76ee\n"
+"- \u52fe\u9009\u591a\u6761+\u672a\u52fe\u9009\u5faa\u73af\uff1a\u6309\u5e8f\u53f7\u4f9d\u6b21\u53d1\u9001\uff0c\u5b8c\u6210\u540e\u505c\u6b62\n"
+"- \u52fe\u9009\u591a\u6761+\u52fe\u9009\u5faa\u73af\uff1a\u6309\u5e8f\u53f7\u4f9d\u6b21\u53d1\u9001\uff0c\u5faa\u73af\u4e0d\u505c", None))
 #endif // QT_CONFIG(tooltip)
     # retranslateUi
 

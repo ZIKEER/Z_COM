@@ -3,7 +3,7 @@ import os
 import time
 from datetime import datetime
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QLabel, QComboBox, QPushButton, QHBoxLayout, QWidget
-from PySide6.QtCore import QTimer, Signal, QObject, QThread
+from PySide6.QtCore import QTimer, Signal, QObject, QThread, Qt
 from PySide6.QtGui import QTextCursor, QIcon
 import serial
 import serial.tools.list_ports
@@ -15,7 +15,7 @@ from src.serial_settings_dialog import SerialSettingsDialog
 from src.config_manager import ConfigManager
 from src.extended_send_manager import ExtendedSendManager
 from src.extended_send_widget import ExtendedSendWidget
-from src.version import VERSION, APP_NAME, ICON_PATH
+from src.version import VERSION, APP_NAME, ICON_PATH, BUILD_TIME
 from src.rtt_manager import RttManager
 
 
@@ -409,8 +409,8 @@ class MainWindow(QMainWindow):
         self.data_handler = DataHandler()
         self.logger = Logger(instance_id=instance_id)
         
-        # 初始化扩展发送管理器
-        self.extended_send_manager = ExtendedSendManager(self.serial_manager)
+        # 初始化扩展发送管理器，注入统一的发送函数
+        self.extended_send_manager = ExtendedSendManager(self._send_data_func)
         
         # 创建扩展发送面板
         self.extended_send_widget = ExtendedSendWidget(self.extended_send_manager)
@@ -482,7 +482,9 @@ class MainWindow(QMainWindow):
         status_layout.addWidget(port_label)
         
         self.port_combo = QComboBox()
-        self.port_combo.setMinimumWidth(150)
+        self.port_combo.setMinimumWidth(200)
+        self.port_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.port_combo.setToolTip("选择串口或J-Link设备")
         status_layout.addWidget(self.port_combo)
         
         # 波特率选择
@@ -605,9 +607,14 @@ class MainWindow(QMainWindow):
         for port, description in ports:
             # 移除描述中可能包含的括号中的端口号，避免重复显示
             # 例如: "USB-SERIAL CH340 (COM3)" -> "USB-SERIAL CH340"
+            full_description = description
             if '(' in description and ')' in description:
                 description = description.split('(')[0].strip()
-            self.port_combo.addItem(f"{port}-{description}", port)
+            display_text = f"{port}-{description}"
+            self.port_combo.addItem(display_text, port)
+            # 设置 tooltip 显示完整信息
+            index = self.port_combo.count() - 1
+            self.port_combo.setItemData(index, f"{port}-{full_description}", Qt.ToolTipRole)
         
         # 恢复信号
         if block_signals:
@@ -638,7 +645,11 @@ class MainWindow(QMainWindow):
             jlink_key = f"JLINK:SN={sn}"
             # 检查是否已存在
             if self.port_combo.findData(jlink_key) < 0:
-                self.port_combo.addItem(f"{jlink_key} - {description}", jlink_key)
+                display_text = f"{jlink_key} - {description}"
+                self.port_combo.addItem(display_text, jlink_key)
+                # 设置 tooltip 显示完整信息
+                index = self.port_combo.count() - 1
+                self.port_combo.setItemData(index, display_text, Qt.ToolTipRole)
     
     def _show_serial_settings(self):
         """显示串口设置对话框"""
@@ -820,6 +831,20 @@ class MainWindow(QMainWindow):
                     f'<span style="color:{arrow_color}; font-weight:bold;">{arrow} ASCII:</span> '
                     f'<span style="color:{data_color};">{ascii_str_html}</span>')
     
+    def _send_data_func(self, data):
+        """统一发送接口，供扩展发送管理器调用
+        
+        Args:
+            data: bytes类型的数据
+            
+        Returns:
+            bool: 发送是否成功
+        """
+        if self.is_rtt_mode:
+            return self.rtt_manager.send_data(data, is_hex=False)
+        else:
+            return self.serial_manager.send_data(data, is_hex=False)
+    
     def _send_data(self):
         """发送数据"""
         if not self.serial_manager.is_connected and not self.rtt_manager.is_connected:
@@ -943,7 +968,11 @@ class MainWindow(QMainWindow):
 • 支持数据帧自动拼接
 • 支持扩展发送（多条数据批量发送）
 • 支持自动发送和回车换行
-• 自动记录日志"""
+• 支持 J-Link RTT 数据收发
+• 支持程序多开
+• 自动记录日志
+
+编译时间：{BUILD_TIME}"""
         QMessageBox.about(self, '关于', about_text)
     
     def _update_status_bar(self):

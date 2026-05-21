@@ -46,12 +46,34 @@ def create_icon():
     return False
 
 
+def update_build_time(build_time):
+    """更新 version.py 中的编译时间"""
+    version_file = os.path.join("src", "version.py")
+    try:
+        with open(version_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 替换 BUILD_TIME 的值
+        import re
+        pattern = r'BUILD_TIME\s*=\s*"[^"]*"'
+        replacement = f'BUILD_TIME = "{build_time}"'
+        new_content = re.sub(pattern, replacement, content)
+        
+        with open(version_file, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+        
+        print(f"[信息] 编译时间已写入: {build_time}")
+    except Exception as e:
+        print(f"[警告] 写入编译时间失败: {e}")
+
+
 def build():
     """执行打包"""
     version = get_version()
     version_name = f"V{version}"
     app_name = f"Z_COM_{version_name}"
     dist_dir = f"dist/{app_name}"
+    build_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     print()
     print("=" * 50)
@@ -60,7 +82,12 @@ def build():
     print()
     print(f"[信息] 版本号: {version_name}")
     print(f"[信息] 输出目录: {dist_dir}")
+    print(f"[信息] 编译时间: {build_time}")
     print()
+    
+    # 写入编译时间到 version.py
+    print("[信息] 写入编译时间...")
+    update_build_time(build_time)
     
     # 清理旧文件
     print("[信息] 清理旧的构建文件...")

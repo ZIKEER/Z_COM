@@ -26,7 +26,11 @@ def get_instance_id():
     current_process = psutil.Process(current_pid)
     current_name = current_process.name()
     
-    # 获取所有同名进程，按创建时间排序
+    # 开发环境直接返回1，避免计算其他Python进程
+    if not getattr(sys, 'frozen', False):
+        return 1
+    
+    # 打包后：获取所有同名进程，按创建时间排序
     instances = []
     for proc in psutil.process_iter(['pid', 'name', 'create_time']):
         try:

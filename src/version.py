@@ -1,13 +1,16 @@
 """版本信息配置"""
 
 # 软件版本号
-VERSION = "0.0.4"
+VERSION = "0.0.5"
 VERSION_NAME = f"V{VERSION}"
 
 # 软件信息
 APP_NAME = "Z_COM"
 APP_NAME_EN = "Z_COM"
 APP_DESCRIPTION = "基于 PySide6 开发的串口调试工具"
+
+# 编译时间（由打包脚本自动更新）
+BUILD_TIME = "2026-05-20 23:06:28"
 
 # 文件信息
 FILE_NAME = f"Z_COM_{VERSION_NAME}.exe"

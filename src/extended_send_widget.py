@@ -2,7 +2,7 @@ import os
 from PySide6.QtWidgets import (QWidget, QTableWidgetItem, QCheckBox, QPushButton, QSpinBox, 
                                 QFileDialog, QMessageBox, QHeaderView, QMenu,
                                 QHBoxLayout, QLabel, QLineEdit)
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QAction, QFontMetrics, QCursor, QColor
 
 import sys
@@ -165,7 +165,13 @@ class ExtendedSendWidget(QWidget):
 3. 延时：发送后等待时间（毫秒）
 4. 左键点击发送按钮：发送单条数据
 5. 右键点击发送按钮：编辑注释
-6. 右键点击面板：弹出更多功能菜单"""
+6. 右键点击面板：弹出更多功能菜单
+
+启动发送模式：
+- 未勾选多条+未勾选循环：发送序号1的条目一次
+- 未勾选多条+勾选循环：循环发送序号1的条目
+- 勾选多条+未勾选循环：按序号依次发送，完成后停止
+- 勾选多条+勾选循环：按序号依次发送，循环不停"""
         QMessageBox.information(self, "扩展发送帮助", help_text)
     
     def _setup_connections(self):
@@ -174,7 +180,7 @@ class ExtendedSendWidget(QWidget):
         self.ui.deleteButton.clicked.connect(self._on_delete_clicked)
         self.ui.moveUpButton.clicked.connect(self._on_move_up_clicked)
         self.ui.moveDownButton.clicked.connect(self._on_move_down_clicked)
-        self.ui.loopSendButton.clicked.connect(self._on_loop_send_clicked)
+        self.ui.startSendButton.clicked.connect(self._on_start_send_clicked)
         
         # 发送进度信号
         self.manager.send_started.connect(self._on_send_started)
@@ -315,7 +321,7 @@ class ExtendedSendWidget(QWidget):
     
     def _add_item(self):
         """添加数据条目"""
-        self.manager.add_item("", is_hex=False, comment="", delay=1000, enabled=True)
+        self.manager.add_item("", is_hex=False, comment="", delay=1000)
         new_row = self.ui.dataTable.rowCount() - 1
         self.ui.dataTable.selectRow(new_row)
     
@@ -372,23 +378,77 @@ class ExtendedSendWidget(QWidget):
             self.operation_mode = "move"
             self._refresh_table()
     
-    def _on_loop_send_clicked(self, checked):
-        """循环发送按钮点击"""
-        if checked:
-            # 开始循环发送
-            duplicates = self._check_order_duplicates()
-            if duplicates:
-                QMessageBox.warning(self, "序号重复", 
-                                    f"序号 {', '.join(map(str, sorted(duplicates)))} 有重复，请修改")
-                self.ui.loopSendButton.setChecked(False)
+    def _on_start_send_clicked(self):
+        """启动发送按钮点击"""
+        if self.manager.is_sending:
+            # 当前正在发送，停止发送
+            self.manager.stop_sending()
+            self._update_send_button_state()
+            return
+        
+        # 检查序号重复
+        duplicates = self._check_order_duplicates()
+        if duplicates:
+            QMessageBox.warning(self, "序号重复", 
+                                f"序号 {', '.join(map(str, sorted(duplicates)))} 有重复，请修改")
+            return
+        
+        is_multi = self.ui.multiSendCheckBox.isChecked()
+        is_loop = self.ui.loopSendCheckBox.isChecked()
+        
+        if not is_multi:
+            # 单条发送模式
+            first_item = self._get_first_ordered_item()
+            if not first_item:
+                QMessageBox.warning(self, "提示", "没有可发送的条目，请设置序号")
                 return
             
-            self.manager.send_multiple(loop=True)
-            self.ui.loopSendButton.setText("停止发送")
+            if is_loop:
+                # 循环发送单条
+                self._start_loop_single(first_item)
+            else:
+                # 发送一次
+                self.manager.send_single(first_item['id'])
+            return
+        
+        # 多条发送模式
+        self.manager.send_multiple(loop=is_loop)
+    
+    def _start_loop_single(self, item):
+        """开始循环发送单条"""
+        self.manager.is_sending = True
+        self.manager.is_looping = True
+        self._loop_single_item = item
+        self._update_send_button_state()
+        self.manager.send_started.emit()
+        self._send_loop_single()
+    
+    def _send_loop_single(self):
+        """循环发送单条的内部方法"""
+        if not self.manager.is_sending:
+            return
+        
+        success = self.manager._send_item(self._loop_single_item)
+        if not success:
+            self.manager.is_sending = False
+            self.manager.is_looping = False
+            self._update_send_button_state()
+            self.manager.send_finished.emit()
+            return
+        
+        # 获取延时
+        delay = self._loop_single_item.get('delay', 1000)
+        if delay > 0:
+            QTimer.singleShot(delay, self._send_loop_single)
         else:
-            # 停止发送
-            self.manager.stop_sending()
-            self.ui.loopSendButton.setText("循环发送")
+            QTimer.singleShot(10, self._send_loop_single)
+    
+    def _get_first_ordered_item(self):
+        """获取序号最小的条目（序号>0）"""
+        valid_items = [item for item in self.manager.items if item.get('sort_order', 0) > 0]
+        if not valid_items:
+            return None
+        return min(valid_items, key=lambda x: x.get('sort_order', 0))
     
     def _check_order_duplicates(self):
         """检查序号是否有重复"""
@@ -511,13 +571,20 @@ class ExtendedSendWidget(QWidget):
     
     def _on_send_started(self):
         """发送开始"""
-        self.ui.loopSendButton.setText("停止发送")
-        self.ui.loopSendButton.setChecked(True)
+        self._update_send_button_state()
     
     def _on_send_finished(self):
         """发送完成"""
-        self.ui.loopSendButton.setText("循环发送")
-        self.ui.loopSendButton.setChecked(False)
+        self._update_send_button_state()
+    
+    def _update_send_button_state(self):
+        """更新发送按钮状态"""
+        if self.manager.is_sending:
+            self.ui.startSendButton.setText("停止发送")
+            self.ui.startSendButton.setStyleSheet("background-color: #FF6B6B;")
+        else:
+            self.ui.startSendButton.setText("启动发送")
+            self.ui.startSendButton.setStyleSheet("")
     
     def _on_send_progress(self, current_id, total):
         """发送进度更新"""
