@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
-from main_window import MainWindow
+from windows.main_window import MainWindow
 from version import ICON_PATH, APP_NAME
 
 

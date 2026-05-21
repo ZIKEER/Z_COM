@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "data": "A",
+      "is_hex": false,
+      "comment": "",
+      "delay": 1000,
+      "sort_order": 0
+    },
+    {
+      "id": 2,
+      "data": "B",
+      "is_hex": false,
+      "comment": "",
+      "delay": 1000,
+      "sort_order": 0
+    }
+  ],
+  "settings": {
+    "loop_send": false,
+    "multi_send": true,
+    "default_delay": 1000
+  }
+}

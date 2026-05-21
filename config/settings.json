@@ -1,20 +1,22 @@
 {
-  "port": "JLINK:SN=69614015",
+  "port": "JLINK:SN=608888289",
   "baudrate": "115200",
   "databits": "8",
   "stopbits": "1",
   "parity": "None",
   "flowcontrol": "None",
-  "display_mode": "MIXED",
+  "display_mode": "ASCII",
   "send_mode": "ASCII",
   "auto_scroll": true,
   "auto_send_interval": 1000,
-  "rtt_chip": "GD32F303RC",
+  "display_ansi": true,
+  "rtt_chip": "GD32F470ZG",
   "rtt_speed": 4000,
   "rtt_reset": true,
   "rtt_start_address": "",
   "rtt_range_size": "",
   "rtt_chip_history": [
+    "GD32F470ZG",
     "GD32F303RC"
   ]
 }

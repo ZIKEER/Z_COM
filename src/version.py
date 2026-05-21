@@ -1,7 +1,7 @@
 """版本信息配置"""
 
 # 软件版本号
-VERSION = "0.0.6"
+VERSION = "0.0.7"
 VERSION_NAME = f"V{VERSION}"
 
 # 软件信息
