@@ -1,0 +1,18 @@
+{
+  "_comment": "DAPLink/CMSIS-DAP 设备 VID/PID 白名单",
+  "devices": [
+    {"vid": 3368, "pid": 516,  "name": "ARM DAPLink"},
+    {"vid": 3368, "pid": 4112, "name": "ARM mbed CMSIS-DAP"},
+    {"vid": 1155, "pid": 14155, "name": "ST-Link/V2-1 CMSIS-DAP"},
+    {"vid": 1155, "pid": 14158, "name": "ST-Link/V3 CMSIS-DAP"},
+    {"vid": 8138, "pid": 544,  "name": "Maxim MAX32625 CMSIS-DAP"},
+    {"vid": 8137, "pid": 304,  "name": "NXP LPC-Link2"},
+    {"vid": 1046, "pid": 58456, "name": "Nu-Link CMSIS-DAP"},
+    {"vid": 49737, "pid": 49154, "name": "Nu-Link2 CMSIS-DAP"},
+    {"vid": 17224, "pid": 21920, "name": "WCH CMSIS-DAP"},
+    {"vid": 11946, "pid": 12,   "name": "Raspberry Pi Pico CMSIS-DAP"},
+    {"vid": 10374, "pid": 45,   "name": "Seeed XIAO CMSIS-DAP"},
+    {"vid": 4966,  "pid": 257,  "name": "JLink CMSIS-DAP"},
+    {"vid": 49745, "pid": 61450, "name": "H7-TOOL CMSIS-DAP"}
+  ]
+}
