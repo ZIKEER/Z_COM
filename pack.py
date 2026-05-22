@@ -4,6 +4,7 @@ import sys
 import shutil
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
 # 导入版本信息
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -101,6 +102,7 @@ def build():
     print()
     
     # 构建 PyInstaller 参数
+    root_dir = os.path.dirname(os.path.abspath(__file__))
     pyinstaller_args = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
@@ -109,17 +111,15 @@ def build():
         "--name", app_name,
         "--distpath", "dist",
         "--workpath", "build",
-        "--specpath", ".",
-        # 添加数据文件
-        "--add-data", "config;config",
-        "--add-data", "resources;resources",
-        "--add-data", "ui;ui",
+        "--specpath", "build",
+        # 添加数据文件（使用绝对路径以兼容 specpath）
+        "--add-data", f"{root_dir}/config;config",
+        "--add-data", f"{root_dir}/resources;resources",
+        "--add-data", f"{root_dir}/ui;ui",
         # 添加隐式导入
         "--hidden-import", "serial",
         "--hidden-import", "serial.tools",
         "--hidden-import", "serial.tools.list_ports",
-        "--hidden-import", "PySide6.QtSvg",
-        "--hidden-import", "PySide6.QtSvgWidgets",
         "--hidden-import", "pylink",
         "--hidden-import", "psutil",
         "--hidden-import", "src.windows.main_window",
@@ -134,13 +134,18 @@ def build():
         "--exclude-module", "matplotlib",
         "--exclude-module", "numpy",
         "--exclude-module", "pandas",
+        "--exclude-module", "PySide6.QtNetwork",
+        "--exclude-module", "PySide6.QtSvg",
+        "--exclude-module", "PySide6.QtSvgWidgets",
+        "--exclude-module", "PySide6.QtPdf",
+        "--exclude-module", "PySide6.QtPdfWidgets",
         # 入口文件
         "run.py"
     ]
     
     # 添加图标参数
     if has_icon and os.path.exists(ICON_PATH):
-        pyinstaller_args.extend(["--icon", ICON_PATH])
+        pyinstaller_args.extend(["--icon", os.path.join(root_dir, ICON_PATH)])
     
     # 执行打包
     try:
@@ -152,6 +157,10 @@ def build():
                 if os.path.exists(dist_dir):
                     shutil.rmtree(dist_dir)
                 os.rename(f"dist/{app_name}", dist_dir)
+            
+            # 删除未使用的 Qt 文件
+            print("[信息] 删除未使用的 Qt 文件以减小体积...")
+            remove_unnecessary_files(dist_dir)
             
             # 显示结果
             show_result(dist_dir, app_name)
@@ -173,6 +182,38 @@ def build():
         print("2. 依赖库缺失，请运行: pip install -r requirements.txt")
     except FileNotFoundError:
         print("[错误] Python 或 PyInstaller 未找到")
+
+
+def remove_unnecessary_files(dist_dir):
+    """删除打包产物中未使用的大体积文件，减小体积"""
+    d = Path(dist_dir)
+    if not d.is_dir():
+        return
+
+    unneeded = {
+        "qt6pdf.dll", "qt6network.dll", "qt6svg.dll", "qt6svgwidgets.dll",
+        "libcrypto-3.dll", "libssl-3.dll",
+        "QtNetwork.pyd", "QtSvg.pyd", "QtSvgWidgets.pyd",
+        "qjpeg.dll", "qwebp.dll", "qtiff.dll", "qicns.dll",
+        "qtga.dll", "qwbmp.dll", "qsvg.dll", "qsvgicon.dll",
+    }
+
+    deleted_count = 0
+    deleted_size = 0
+    for file in d.rglob("*"):
+        if not file.is_file():
+            continue
+        if file.name in unneeded:
+            sz = file.stat().st_size
+            file.unlink()
+            deleted_count += 1
+            deleted_size += sz
+            print(f"  删除: {file.relative_to(d)} ({sz / 1024:.0f} KB)")
+
+    if deleted_count:
+        print(f"[信息] 共删除 {deleted_count} 个文件，节省 {deleted_size / 1024 / 1024:.1f} MB")
+    else:
+        print("[信息] 未找到需要删除的文件")
 
 
 def show_result(dist_dir, app_name):
@@ -206,14 +247,17 @@ def show_result(dist_dir, app_name):
     print()
     
     # 打开输出目录
-    if os.path.exists(dist_dir):
-        if sys.platform == "win32":
-            os.startfile(dist_dir)
-        elif sys.platform == "darwin":
-            subprocess.run(["open", dist_dir])
-        else:
-            subprocess.run(["xdg-open", dist_dir])
-
+    try:
+        if os.path.exists(dist_dir):
+            abs_dist_dir = os.path.abspath(dist_dir)
+            if sys.platform == "win32":
+                os.startfile(abs_dist_dir)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", abs_dist_dir])
+            else:
+                subprocess.run(["xdg-open", abs_dist_dir])
+    except Exception as e:
+        print(f"[警告] 无法自动打开目录: {e}")
 
 if __name__ == "__main__":
     build()

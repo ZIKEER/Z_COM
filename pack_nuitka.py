@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import glob
 from datetime import datetime
+from pathlib import Path
 
 # 导入版本信息
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -68,17 +69,74 @@ def update_build_time(build_time):
 
 def clean_nuitka_temps():
     """清理 Nuitka 生成的临时目录"""
-    temp_patterns = [
-        "dist_nuitka/run.dist",
-        "dist_nuitka/run.onefile-build", 
-        "dist_nuitka/run.build",
-        "dist_nuitka/*.build"
-    ]
-    for pattern in temp_patterns:
+    patterns = ["dist_nuitka/*.dist", "dist_nuitka/*.build", "dist_nuitka/*.onefile-build"]
+    for pattern in patterns:
         for path in glob.glob(pattern):
             if os.path.isdir(path):
                 shutil.rmtree(path)
                 print(f"  已删除临时目录: {path}")
+
+
+def remove_unnecessary_files(dist_dir):
+    """删除打包产物中未使用的大体积文件，减小体积"""
+    d = Path(dist_dir)
+    if not d.is_dir():
+        return
+
+    # ---------------------------------------------------------------
+    # 1. 未使用的 Qt C++ DLL
+    # ---------------------------------------------------------------
+    unneeded_dlls = {
+        "qt6pdf.dll",        # 4.4 MB — 未使用 QtPdf
+        "qt6network.dll",    # 1.7 MB — Socket 走 Python stdlib，非 QtNetwork
+        "qt6svg.dll",        # 0.6 MB — 未使用 QtSvg
+        "qt6svgwidgets.dll", # 0.1 MB — 未使用
+        "libcrypto-3.dll",   # 5.0 MB — OpenSSL，QtNetwork SSL 专用
+        "libssl-3.dll",      # 跟随 libcrypto
+    }
+
+    # ---------------------------------------------------------------
+    # 2. 未使用的 Qt .pyd 绑定
+    # ---------------------------------------------------------------
+    unneeded_pyds = {
+        "QtNetwork.pyd",     # 1.0 MB
+        "QtSvg.pyd",
+        "QtSvgWidgets.pyd",
+    }
+
+    # ---------------------------------------------------------------
+    # 3. 不必要的图片格式插件（只用 .ico，不用 jpeg/webp/tiff 等）
+    # ---------------------------------------------------------------
+    unneeded_image_plugins = {
+        "qjpeg.dll",    # 0.6 MB
+        "qwebp.dll",    # 0.5 MB
+        "qtiff.dll",    # 0.4 MB
+        "qicns.dll",    # 0.1 MB (macOS only)
+        "qtga.dll",
+        "qwbmp.dll",
+        "qsvg.dll",     # SVG image plugin — 不用 QtSvg 则无用
+        "qsvgicon.dll",
+    }
+    # 保留: qico.dll, qgif.dll, qpdf.dll (体积均 < 1 KB)
+
+    deleted_count = 0
+    deleted_size = 0
+
+    for file in d.rglob("*"):
+        if not file.is_file():
+            continue
+        name = file.name
+        if name in unneeded_dlls or name in unneeded_pyds or name in unneeded_image_plugins:
+            sz = file.stat().st_size
+            file.unlink()
+            deleted_count += 1
+            deleted_size += sz
+            print(f"  删除: {file.relative_to(d)} ({sz / 1024:.0f} KB)")
+
+    if deleted_count:
+        print(f"[信息] 共删除 {deleted_count} 个文件，节省 {deleted_size / 1024 / 1024:.1f} MB")
+    else:
+        print("[信息] 未找到需要删除的文件")
 
 
 def build():
@@ -117,8 +175,7 @@ def build():
     # 构建 Nuitka 参数
     nuitka_args = [
         sys.executable, "-m", "nuitka",
-        "--standalone",  # 独立模式
-        "--onefile",  # 单文件模式
+        "--standalone",  # 独立模式（非单文件，输出目录）
         "--windows-console-mode=disable",  # 不显示命令行窗口
         "--enable-plugin=pyside6",  # 启用 PySide6 插件
         f"--output-filename={app_name}.exe",
@@ -135,15 +192,16 @@ def build():
         "--include-module=serial",
         "--include-module=serial.tools",
         "--include-module=serial.tools.list_ports",
-        "--include-module=PySide6.QtSvg",
-        "--include-module=PySide6.QtSvgWidgets",
         "--include-module=pylink",
         "--include-module=psutil",
         "--include-module=src.windows.main_window",
         "--include-module=src.windows.serial_settings_dialog",
+        "--include-module=src.windows.extended_send_widget",
         "--include-module=src.core.config_manager",
         "--include-module=src.core.extended_send_manager",
-        "--include-module=src.windows.extended_send_widget",
+        "--include-module=ui.Ui_main_window",
+        "--include-module=ui.Ui_serial_settings_dialog",
+        "--include-module=ui.Ui_extended_send_widget",
         "--include-module=src.io.rtt_manager",
         "--include-module=src.version",
         # 排除不需要的模块
@@ -151,6 +209,10 @@ def build():
         "--noinclude-custom-mode=matplotlib:error",
         "--noinclude-custom-mode=numpy:error",
         "--noinclude-custom-mode=pandas:error",
+        # PySide6 子模块不在此排除（__init__.py 条件式导入会打断编译）
+        # 未用的 Qt DLL / .pyd 由构建后的 remove_unnecessary_files() 删除
+        # 编译优化 — 仅增加编译时间，运行时无负面影响
+        "--lto=yes",
         # 入口文件
         "run.py"
     ]
@@ -164,17 +226,25 @@ def build():
         result = subprocess.run(nuitka_args, check=True)
         
         if result.returncode == 0:
+            # Nuitka 默认输出为 run.dist，重命名为目标目录
+            print("[信息] 查找并重命名输出目录...")
+            dist_source = os.path.abspath("dist_nuitka/run.dist")
+            dist_target = os.path.abspath(dist_dir)
+            if os.path.isdir(dist_source):
+                if os.path.isdir(dist_target):
+                    shutil.rmtree(dist_target)
+                shutil.move(dist_source, dist_target)
+                dist_dir = dist_target  # 后续用绝对路径
+                print(f"[信息] 已重命名目录为: {dist_dir}")
+            
             # 清理 Nuitka 临时目录
             print("[信息] 清理临时文件...")
             clean_nuitka_temps()
             
-            # 将 exe 移动到版本目录
-            exe_file = f"dist_nuitka/{app_name}.exe"
-            if os.path.exists(exe_file):
-                os.makedirs(dist_dir, exist_ok=True)
-                final_exe = os.path.join(dist_dir, f"{app_name}.exe")
-                shutil.move(exe_file, final_exe)
-                print(f"[信息] 已移动到: {final_exe}")
+            # 删除未使用的 Qt DLL / 插件 / PYD
+            print("[信息] 删除未使用的 Qt 文件以减小体积...")
+            remove_unnecessary_files(dist_dir)
+            
             
             # 显示结果
             show_result(dist_dir, app_name)

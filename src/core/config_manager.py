@@ -32,6 +32,7 @@ class ConfigManager:
             'rtt_start_address': '',
             'rtt_range_size': '',
             'rtt_chip_history': [],
+            'rtt_frame_timeout': 50,
         }
         self.config = self.default_config.copy()
         self._load_config()

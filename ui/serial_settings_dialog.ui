@@ -7,123 +7,154 @@
     <x>0</x>
     <y>0</y>
     <width>380</width>
-    <height>450</height>
+    <height>520</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>串口高级设置</string>
+   <string>更多设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
-    <number>8</number>
+    <number>2</number>
    </property>
    <property name="leftMargin">
-    <number>8</number>
+    <number>4</number>
    </property>
    <property name="topMargin">
-    <number>8</number>
+    <number>4</number>
    </property>
    <property name="rightMargin">
-    <number>8</number>
+    <number>4</number>
    </property>
    <property name="bottomMargin">
-    <number>8</number>
+    <number>4</number>
    </property>
    <item>
-    <layout class="QGridLayout" name="gridLayout">
-     <property name="spacing">
-      <number>6</number>
+    <widget class="QGroupBox" name="serialGroupBox">
+     <property name="title">
+      <string>串口设置</string>
      </property>
-     <item row="0" column="0">
-      <widget class="QLabel" name="databitsLabel">
-       <property name="text">
-        <string>数据位：</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <widget class="QComboBox" name="databitsComboBox"/>
-     </item>
-     <item row="0" column="2">
-      <widget class="QLabel" name="stopbitsLabel">
-       <property name="text">
-        <string>停止位：</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="3">
-      <widget class="QComboBox" name="stopbitsComboBox"/>
-     </item>
-     <item row="1" column="0">
-      <widget class="QLabel" name="parityLabel">
-       <property name="text">
-        <string>校验位：</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="1">
-      <widget class="QComboBox" name="parityComboBox"/>
-     </item>
-     <item row="1" column="2">
-      <widget class="QLabel" name="flowcontrolLabel">
-       <property name="text">
-        <string>流控制：</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="3">
-      <widget class="QComboBox" name="flowcontrolComboBox"/>
-     </item>
-    </layout>
+     <layout class="QVBoxLayout" name="serialVBoxLayout">
+      <property name="spacing">
+       <number>2</number>
+      </property>
+      <item>
+       <layout class="QGridLayout" name="gridLayout">
+        <property name="spacing">
+         <number>2</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="databitsLabel">
+          <property name="text">
+           <string>数据位：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="databitsComboBox"/>
+        </item>
+        <item row="0" column="2">
+         <widget class="QLabel" name="stopbitsLabel">
+          <property name="text">
+           <string>停止位：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
+         <widget class="QComboBox" name="stopbitsComboBox"/>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="parityLabel">
+          <property name="text">
+           <string>校验位：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QComboBox" name="parityComboBox"/>
+        </item>
+        <item row="1" column="2">
+         <widget class="QLabel" name="flowcontrolLabel">
+          <property name="text">
+           <string>流控制：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3">
+         <widget class="QComboBox" name="flowcontrolComboBox"/>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="frameTimeoutLayout">
-     <item>
-      <widget class="QLabel" name="frameTimeoutLabel">
-       <property name="text">
-        <string>拼包超时：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSpinBox" name="frameTimeoutSpinBox">
-       <property name="minimum">
-        <number>10</number>
-       </property>
-       <property name="maximum">
-        <number>1000</number>
-       </property>
-       <property name="value">
-        <number>50</number>
-       </property>
-       <property name="suffix">
-        <string> ms</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="frameTimeoutSpacer">
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <widget class="QLabel" name="frameTimeoutHint">
-     <property name="text">
-      <string>说明：拼包超时用于将同一帧数据合并显示，超时时间越长合并越多</string>
+    <widget class="QGroupBox" name="commonGroupBox">
+     <property name="title">
+      <string>通用设置</string>
      </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
+     <layout class="QVBoxLayout" name="commonVBoxLayout">
+      <property name="spacing">
+       <number>2</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="frameTimeoutLayout">
+        <item>
+         <widget class="QLabel" name="frameTimeoutLabel">
+          <property name="text">
+           <string>拼包超时：</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="frameTimeoutSpinBox">
+          <property name="minimum">
+           <number>10</number>
+          </property>
+          <property name="maximum">
+           <number>1000</number>
+          </property>
+          <property name="value">
+           <number>50</number>
+          </property>
+          <property name="suffix">
+           <string> ms</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="frameTimeoutSpacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="frameTimeoutHint">
+        <property name="text">
+         <string>说明：拼包超时用于将同一帧数据合并显示，超时时间越长合并越多</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="ansiCheckBox">
+        <property name="text">
+         <string>ANSI颜色显示</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
@@ -133,13 +164,13 @@
      </property>
      <layout class="QVBoxLayout" name="rttVBoxLayout">
       <property name="spacing">
-       <number>6</number>
+       <number>2</number>
       </property>
       <item>
-       <layout class="QGridLayout" name="rttGridLayout">
-        <property name="spacing">
-         <number>6</number>
-        </property>
+        <layout class="QGridLayout" name="rttGridLayout">
+          <property name="spacing">
+           <number>2</number>
+          </property>
         <item row="0" column="0">
          <widget class="QLabel" name="rttChipLabel">
           <property name="text">

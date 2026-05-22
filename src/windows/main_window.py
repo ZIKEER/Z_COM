@@ -19,6 +19,7 @@ from src.core.logger import Logger
 from src.version import APP_NAME, VERSION, ICON_PATH
 from src.io.serial_manager import SerialManager
 from src.io.socket_manager import SocketManager
+from src.build_info import BUILD_TIME
 
 
 def get_resource_path(relative_path):
@@ -36,6 +37,7 @@ def get_resource_path(relative_path):
 DISPLAY_TIMESTAMP_COLOR = "#00CED1"
 DISPLAY_ARROW_COLOR = "#000000"
 DISPLAY_DATA_COLOR = "#000000"
+MAX_DISPLAY_LINES = 10000
 
 
 class MainWindow(QMainWindow):
@@ -87,6 +89,12 @@ class MainWindow(QMainWindow):
         self.display_ansi = False  # ANSI 颜色解析开关
         self.auto_send_timer = QTimer()
         self.auto_send_timer.timeout.connect(self._auto_send)
+        self._log_flush_timer = QTimer()
+        self._log_flush_timer.timeout.connect(self.logger.flush)
+        self._log_flush_timer.start(1000)
+        self._save_debounce_timer = QTimer()
+        self._save_debounce_timer.setSingleShot(True)
+        self._save_debounce_timer.timeout.connect(self.config_manager.save)
         
         # 初始化界面
         self._init_ui()
@@ -160,6 +168,9 @@ class MainWindow(QMainWindow):
         
         # 初始断开状态
         self.ui.statusLabel.setStyleSheet("color: red;")
+        
+        # 限制自动发送最小间隔
+        self.ui.intervalSpinBox.setMinimum(10)
     
     def _setup_connections(self):
         """设置信号连接"""
@@ -297,11 +308,17 @@ class MainWindow(QMainWindow):
                 insert_pos += 1
     
     def _show_serial_settings(self):
-        """显示串口设置对话框"""
+        """显示更多设置对话框"""
         rtt_settings = self.config_manager.get_rtt_settings()
-        dialog = SerialSettingsDialog(self.serial_manager.settings, rtt_settings, self)
+        dialog = SerialSettingsDialog(
+            self.serial_manager.settings,
+            rtt_settings,
+            self.display_ansi,
+            self
+        )
         dialog.settings_changed.connect(self._on_serial_settings_changed)
         dialog.rtt_settings_changed.connect(self._on_rtt_settings_changed)
+        dialog.common_settings_changed.connect(self._on_common_settings_changed)
         dialog.exec()
     
     def _on_serial_settings_changed(self, settings):
@@ -320,6 +337,19 @@ class MainWindow(QMainWindow):
         self.config_manager.set('rtt_reset', settings.get('reset', True))
         self.config_manager.set('rtt_start_address', settings.get('start_address', ''))
         self.config_manager.set('rtt_range_size', settings.get('range_size', ''))
+        self.config_manager.save()
+    
+    def _on_common_settings_changed(self, settings):
+        """通用设置改变"""
+        if 'frame_timeout' in settings:
+            timeout = settings['frame_timeout']
+            self.serial_manager.update_settings({'frame_timeout': timeout})
+            self.rtt_manager.update_settings({'frame_timeout': timeout})
+            self.socket_manager.update_settings({'frame_timeout': timeout})
+            self.config_manager.set('rtt_frame_timeout', timeout)
+        if 'display_ansi' in settings:
+            self.display_ansi = settings['display_ansi']
+            self.config_manager.set('display_ansi', self.display_ansi)
         self.config_manager.save()
     
     def _on_baudrate_changed(self, text):
@@ -454,16 +484,10 @@ class MainWindow(QMainWindow):
             )
 
     def _append_data_lines(self, data, arrow, log_type):
-        """按行拆分并显示数据
-        
-        ASCII 模式下将多行数据按 \\n 拆分为独立行显示，
-        每行都有时间戳和箭头前缀。
-        HEX / MIXED 模式保持原样显示。
-        """
+        """按行拆分并显示数据"""
         mode = self._display_mode
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         
-        # TCP Server 模式下附加客户端标识
         if self.io_mode == 'socket' and self.socket_manager.current_client:
             client = self.socket_manager.current_client
             client_prefix = f'[{client[0]}:{client[1]}] '
@@ -476,7 +500,9 @@ class MainWindow(QMainWindow):
         else:
             self.send_count += len(data)
         
-        self.logger.log(data, log_type, timestamp, mode)
+        hex_str = self.data_handler.bytes_to_hex(data)
+        ascii_str = self.data_handler.bytes_to_ascii(data)
+        self.logger.log(timestamp, log_type, hex_str, ascii_str)
         
         if mode == 'ASCII' and b'\n' in data:
             pieces = []
@@ -496,6 +522,13 @@ class MainWindow(QMainWindow):
             cursor = self.ui.receiveTextEdit.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self.ui.receiveTextEdit.setTextCursor(cursor)
+        
+        # 限制显示行数
+        doc = self.ui.receiveTextEdit.document()
+        if doc.blockCount() > MAX_DISPLAY_LINES:
+            cursor = QTextCursor(doc.findBlockByNumber(doc.blockCount() - MAX_DISPLAY_LINES // 2))
+            cursor.movePosition(QTextCursor.MoveOperation.Start, QTextCursor.MoveMode.KeepAnchor)
+            cursor.removeSelectedText()
         
         self._update_status_bar()
     
@@ -615,15 +648,19 @@ class MainWindow(QMainWindow):
         """显示关于对话框"""
         about_text = f"""{APP_NAME} V{VERSION}
 
-基于 PySide6 开发的串口调试工具
+基于 PySide6 开发的多协议调试工具
 
 功能特性：
-• 支持 HEX/ASCII/HEX+ASCII 多种显示模式
-• 支持数据帧自动拼接
-• 支持扩展发送（多条数据批量发送）
-• 支持自动发送和回车换行
+• 支持串口（Serial）通信
 • 支持 J-Link RTT 数据收发
-• 支持程序多开
+• 支持 TCP/UDP Socket 通信
+• 支持 HEX/ASCII/HEX+ASCII 多种显示模式
+• 支持数据帧自动拼接（可调超时时间）
+• 支持扩展发送（多条数据批量发送/循环发送）
+• 支持自动发送和回车换行
+• 支持 ANSI 颜色显示
+• 支持程序多开（配置隔离）
+• 支持配置持久化（自动保存设置）
 • 自动记录日志
 
 编译时间：{BUILD_TIME}"""
@@ -710,7 +747,7 @@ class MainWindow(QMainWindow):
         self.config_manager.save()
     
     def _save_config_item(self, item_key):
-        """保存单个配置项"""
+        """保存单个配置项（防抖）"""
         if item_key == 'port':
             if self.ui.portCombo.currentIndex() >= 0:
                 self.config_manager.set('port', self.ui.portCombo.currentData())
@@ -727,10 +764,12 @@ class MainWindow(QMainWindow):
         elif item_key == 'display_ansi':
             self.config_manager.set('display_ansi', self.display_ansi)
         
-        self.config_manager.save()
+        self._save_debounce_timer.start(500)
     
     def closeEvent(self, event):
         """关闭事件"""
+        self.logger.flush()
+        self.extended_send_manager.flush()
         self._save_config()
         if self._io.is_connected:
             self._io.disconnect()

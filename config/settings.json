@@ -1,5 +1,5 @@
 {
-  "port": "JLINK:SN=608888289",
+  "port": "COM3",
   "baudrate": "115200",
   "databits": "8",
   "stopbits": "1",
@@ -12,11 +12,12 @@
   "display_ansi": true,
   "rtt_chip": "GD32F470ZG",
   "rtt_speed": 4000,
-  "rtt_reset": true,
+  "rtt_reset": false,
   "rtt_start_address": "",
   "rtt_range_size": "",
   "rtt_chip_history": [
     "GD32F470ZG",
     "GD32F303RC"
-  ]
+  ],
+  "rtt_frame_timeout": 50
 }

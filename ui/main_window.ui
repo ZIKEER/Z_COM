@@ -201,7 +201,7 @@
           <item>
            <layout class="QHBoxLayout" name="sendConfigLayout">
             <property name="spacing">
-             <number>3</number>
+             <number>2</number>
             </property>
             <item>
              <widget class="QRadioButton" name="sendAsciiRadio">
@@ -314,9 +314,9 @@
         </size>
        </property>
        <layout class="QHBoxLayout" name="statusBarLayout">
-        <property name="spacing">
-         <number>6</number>
-        </property>
+         <property name="spacing">
+          <number>2</number>
+         </property>
         <property name="leftMargin">
          <number>3</number>
         </property>
@@ -635,7 +635,7 @@
   </action>
   <action name="actionSettings">
    <property name="text">
-    <string>串口设置</string>
+    <string>更多设置(&amp;S)...</string>
    </property>
   </action>
   <action name="togglePresetAction">
