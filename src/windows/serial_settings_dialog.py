@@ -8,12 +8,13 @@ from ui.Ui_serial_settings_dialog import Ui_SerialSettingsDialog
 
 
 class SerialSettingsDialog(QDialog):
-    """串口设置对话框"""
+    """更多设置对话框（串口/RTT/通用设置）"""
     
     settings_changed = Signal(dict)
     rtt_settings_changed = Signal(dict)
+    common_settings_changed = Signal(dict)
     
-    def __init__(self, current_settings=None, rtt_settings=None, parent=None):
+    def __init__(self, current_settings=None, rtt_settings=None, display_ansi=False, parent=None):
         super().__init__(parent)
         self.ui = Ui_SerialSettingsDialog()
         self.ui.setupUi(self)
@@ -24,9 +25,20 @@ class SerialSettingsDialog(QDialog):
             self._load_settings(current_settings)
         if rtt_settings:
             self._load_rtt_settings(rtt_settings)
+        
+        self.ui.ansiCheckBox.setChecked(display_ansi)
     
     def _init_ui(self):
         """初始化界面"""
+        # 串口 Grid 列比例：标签自然宽度，ComboBox 拉伸
+        self.ui.gridLayout.setColumnStretch(0, 0)
+        self.ui.gridLayout.setColumnStretch(1, 1)
+        self.ui.gridLayout.setColumnStretch(2, 0)
+        self.ui.gridLayout.setColumnStretch(3, 1)
+        # RTT Grid 列比例
+        self.ui.rttGridLayout.setColumnStretch(0, 0)
+        self.ui.rttGridLayout.setColumnStretch(1, 1)
+        
         # 数据位
         databits = ['5', '6', '7', '8']
         self.ui.databitsComboBox.addItems(databits)
@@ -61,8 +73,6 @@ class SerialSettingsDialog(QDialog):
             self.ui.parityComboBox.setCurrentText(settings['parity'])
         if 'flowcontrol' in settings:
             self.ui.flowcontrolComboBox.setCurrentText(settings['flowcontrol'])
-        if 'frame_timeout' in settings:
-            self.ui.frameTimeoutSpinBox.setValue(settings['frame_timeout'])
     
     def _load_rtt_settings(self, settings):
         """加载 RTT 设置"""
@@ -89,13 +99,17 @@ class SerialSettingsDialog(QDialog):
             self.ui.rttStartAddressLineEdit.setText(settings['start_address'])
         if 'range_size' in settings:
             self.ui.rttRangeSizeLineEdit.setText(settings['range_size'])
+        if 'frame_timeout' in settings:
+            self.ui.frameTimeoutSpinBox.setValue(settings['frame_timeout'])
     
     def _on_accept(self):
         """确认按钮点击"""
         settings = self.get_settings()
         rtt_settings = self.get_rtt_settings()
+        common_settings = self.get_common_settings()
         self.settings_changed.emit(settings)
         self.rtt_settings_changed.emit(rtt_settings)
+        self.common_settings_changed.emit(common_settings)
         self.accept()
     
     def get_settings(self):
@@ -105,7 +119,6 @@ class SerialSettingsDialog(QDialog):
             'stopbits': float(self.ui.stopbitsComboBox.currentText()),
             'parity': self.ui.parityComboBox.currentText(),
             'flowcontrol': self.ui.flowcontrolComboBox.currentText(),
-            'frame_timeout': self.ui.frameTimeoutSpinBox.value()
         }
     
     def get_rtt_settings(self):
@@ -116,4 +129,11 @@ class SerialSettingsDialog(QDialog):
             'reset': self.ui.rttResetCheckBox.isChecked(),
             'start_address': self.ui.rttStartAddressLineEdit.text().strip(),
             'range_size': self.ui.rttRangeSizeLineEdit.text().strip(),
+        }
+    
+    def get_common_settings(self):
+        """获取通用设置"""
+        return {
+            'frame_timeout': self.ui.frameTimeoutSpinBox.value(),
+            'display_ansi': self.ui.ansiCheckBox.isChecked(),
         }

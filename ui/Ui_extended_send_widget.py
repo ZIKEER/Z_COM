@@ -15,9 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QHeaderView, QLabel,
-    QPushButton, QSizePolicy, QSpacerItem, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QHeaderView,
+    QLabel, QPushButton, QSizePolicy, QSpacerItem,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 class Ui_ExtendedSendWidget(object):
     def setupUi(self, ExtendedSendWidget):
@@ -25,9 +25,9 @@ class Ui_ExtendedSendWidget(object):
             ExtendedSendWidget.setObjectName(u"ExtendedSendWidget")
         ExtendedSendWidget.resize(500, 400)
         self.verticalLayout = QVBoxLayout(ExtendedSendWidget)
-        self.verticalLayout.setSpacing(6)
+        self.verticalLayout.setSpacing(2)
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.verticalLayout.setContentsMargins(6, 6, 6, 6)
+        self.verticalLayout.setContentsMargins(4, 4, 4, 4)
         self.dataTable = QTableWidget(ExtendedSendWidget)
         if (self.dataTable.columnCount() < 4):
             self.dataTable.setColumnCount(4)
@@ -45,6 +45,7 @@ class Ui_ExtendedSendWidget(object):
         self.verticalLayout.addWidget(self.dataTable)
 
         self.controlLayout = QHBoxLayout()
+        self.controlLayout.setSpacing(2)
         self.controlLayout.setObjectName(u"controlLayout")
         self.addButton = QPushButton(ExtendedSendWidget)
         self.addButton.setObjectName(u"addButton")
@@ -130,7 +131,8 @@ class Ui_ExtendedSendWidget(object):
 "\u542f\u52a8\u53d1\u9001\u6a21\u5f0f\uff1a\n"
 "- \u672a\u52fe\u9009\u591a\u6761+\u672a\u52fe\u9009\u5faa\u73af\uff1a\u53d1\u9001\u5e8f\u53f71\u7684\u6761\u76ee\u4e00\u6b21\n"
 "- \u672a\u52fe\u9009\u591a\u6761+\u52fe\u9009\u5faa\u73af\uff1a\u5faa\u73af\u53d1\u9001\u5e8f\u53f71\u7684\u6761\u76ee\n"
-"- \u52fe\u9009\u591a\u6761+\u672a\u52fe\u9009\u5faa\u73af\uff1a\u6309\u5e8f\u53f7\u4f9d\u6b21\u53d1\u9001\uff0c\u5b8c\u6210\u540e\u505c\u6b62\n"
+"- \u52fe\u9009\u591a\u6761+\u672a\u52fe\u9009\u5faa\u73af\uff1a\u6309\u5e8f\u53f7\u4f9d"
+                        "\u6b21\u53d1\u9001\uff0c\u5b8c\u6210\u540e\u505c\u6b62\n"
 "- \u52fe\u9009\u591a\u6761+\u52fe\u9009\u5faa\u73af\uff1a\u6309\u5e8f\u53f7\u4f9d\u6b21\u53d1\u9001\uff0c\u5faa\u73af\u4e0d\u505c", None))
 #endif // QT_CONFIG(tooltip)
     # retranslateUi

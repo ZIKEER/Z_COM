@@ -24,65 +24,78 @@ class Ui_SerialSettingsDialog(object):
     def setupUi(self, SerialSettingsDialog):
         if not SerialSettingsDialog.objectName():
             SerialSettingsDialog.setObjectName(u"SerialSettingsDialog")
-        SerialSettingsDialog.resize(380, 450)
+        SerialSettingsDialog.resize(380, 520)
         self.verticalLayout = QVBoxLayout(SerialSettingsDialog)
-        self.verticalLayout.setSpacing(8)
+        self.verticalLayout.setSpacing(2)
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.verticalLayout.setContentsMargins(8, 8, 8, 8)
+        self.verticalLayout.setContentsMargins(4, 4, 4, 4)
+        self.serialGroupBox = QGroupBox(SerialSettingsDialog)
+        self.serialGroupBox.setObjectName(u"serialGroupBox")
+        self.serialVBoxLayout = QVBoxLayout(self.serialGroupBox)
+        self.serialVBoxLayout.setSpacing(2)
+        self.serialVBoxLayout.setObjectName(u"serialVBoxLayout")
         self.gridLayout = QGridLayout()
-        self.gridLayout.setSpacing(6)
+        self.gridLayout.setSpacing(2)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.databitsLabel = QLabel(SerialSettingsDialog)
+        self.databitsLabel = QLabel(self.serialGroupBox)
         self.databitsLabel.setObjectName(u"databitsLabel")
 
         self.gridLayout.addWidget(self.databitsLabel, 0, 0, 1, 1)
 
-        self.databitsComboBox = QComboBox(SerialSettingsDialog)
+        self.databitsComboBox = QComboBox(self.serialGroupBox)
         self.databitsComboBox.setObjectName(u"databitsComboBox")
 
         self.gridLayout.addWidget(self.databitsComboBox, 0, 1, 1, 1)
 
-        self.stopbitsLabel = QLabel(SerialSettingsDialog)
+        self.stopbitsLabel = QLabel(self.serialGroupBox)
         self.stopbitsLabel.setObjectName(u"stopbitsLabel")
 
         self.gridLayout.addWidget(self.stopbitsLabel, 0, 2, 1, 1)
 
-        self.stopbitsComboBox = QComboBox(SerialSettingsDialog)
+        self.stopbitsComboBox = QComboBox(self.serialGroupBox)
         self.stopbitsComboBox.setObjectName(u"stopbitsComboBox")
 
         self.gridLayout.addWidget(self.stopbitsComboBox, 0, 3, 1, 1)
 
-        self.parityLabel = QLabel(SerialSettingsDialog)
+        self.parityLabel = QLabel(self.serialGroupBox)
         self.parityLabel.setObjectName(u"parityLabel")
 
         self.gridLayout.addWidget(self.parityLabel, 1, 0, 1, 1)
 
-        self.parityComboBox = QComboBox(SerialSettingsDialog)
+        self.parityComboBox = QComboBox(self.serialGroupBox)
         self.parityComboBox.setObjectName(u"parityComboBox")
 
         self.gridLayout.addWidget(self.parityComboBox, 1, 1, 1, 1)
 
-        self.flowcontrolLabel = QLabel(SerialSettingsDialog)
+        self.flowcontrolLabel = QLabel(self.serialGroupBox)
         self.flowcontrolLabel.setObjectName(u"flowcontrolLabel")
 
         self.gridLayout.addWidget(self.flowcontrolLabel, 1, 2, 1, 1)
 
-        self.flowcontrolComboBox = QComboBox(SerialSettingsDialog)
+        self.flowcontrolComboBox = QComboBox(self.serialGroupBox)
         self.flowcontrolComboBox.setObjectName(u"flowcontrolComboBox")
 
         self.gridLayout.addWidget(self.flowcontrolComboBox, 1, 3, 1, 1)
 
 
-        self.verticalLayout.addLayout(self.gridLayout)
+        self.serialVBoxLayout.addLayout(self.gridLayout)
 
+
+        self.verticalLayout.addWidget(self.serialGroupBox)
+
+        self.commonGroupBox = QGroupBox(SerialSettingsDialog)
+        self.commonGroupBox.setObjectName(u"commonGroupBox")
+        self.commonVBoxLayout = QVBoxLayout(self.commonGroupBox)
+        self.commonVBoxLayout.setSpacing(2)
+        self.commonVBoxLayout.setObjectName(u"commonVBoxLayout")
         self.frameTimeoutLayout = QHBoxLayout()
         self.frameTimeoutLayout.setObjectName(u"frameTimeoutLayout")
-        self.frameTimeoutLabel = QLabel(SerialSettingsDialog)
+        self.frameTimeoutLabel = QLabel(self.commonGroupBox)
         self.frameTimeoutLabel.setObjectName(u"frameTimeoutLabel")
 
         self.frameTimeoutLayout.addWidget(self.frameTimeoutLabel)
 
-        self.frameTimeoutSpinBox = QSpinBox(SerialSettingsDialog)
+        self.frameTimeoutSpinBox = QSpinBox(self.commonGroupBox)
         self.frameTimeoutSpinBox.setObjectName(u"frameTimeoutSpinBox")
         self.frameTimeoutSpinBox.setMinimum(10)
         self.frameTimeoutSpinBox.setMaximum(1000)
@@ -95,21 +108,29 @@ class Ui_SerialSettingsDialog(object):
         self.frameTimeoutLayout.addItem(self.frameTimeoutSpacer)
 
 
-        self.verticalLayout.addLayout(self.frameTimeoutLayout)
+        self.commonVBoxLayout.addLayout(self.frameTimeoutLayout)
 
-        self.frameTimeoutHint = QLabel(SerialSettingsDialog)
+        self.frameTimeoutHint = QLabel(self.commonGroupBox)
         self.frameTimeoutHint.setObjectName(u"frameTimeoutHint")
         self.frameTimeoutHint.setWordWrap(True)
 
-        self.verticalLayout.addWidget(self.frameTimeoutHint)
+        self.commonVBoxLayout.addWidget(self.frameTimeoutHint)
+
+        self.ansiCheckBox = QCheckBox(self.commonGroupBox)
+        self.ansiCheckBox.setObjectName(u"ansiCheckBox")
+
+        self.commonVBoxLayout.addWidget(self.ansiCheckBox)
+
+
+        self.verticalLayout.addWidget(self.commonGroupBox)
 
         self.rttGroupBox = QGroupBox(SerialSettingsDialog)
         self.rttGroupBox.setObjectName(u"rttGroupBox")
         self.rttVBoxLayout = QVBoxLayout(self.rttGroupBox)
-        self.rttVBoxLayout.setSpacing(6)
+        self.rttVBoxLayout.setSpacing(2)
         self.rttVBoxLayout.setObjectName(u"rttVBoxLayout")
         self.rttGridLayout = QGridLayout()
-        self.rttGridLayout.setSpacing(6)
+        self.rttGridLayout.setSpacing(2)
         self.rttGridLayout.setObjectName(u"rttGridLayout")
         self.rttChipLabel = QLabel(self.rttGroupBox)
         self.rttChipLabel.setObjectName(u"rttChipLabel")
@@ -190,14 +211,17 @@ class Ui_SerialSettingsDialog(object):
     # setupUi
 
     def retranslateUi(self, SerialSettingsDialog):
-        SerialSettingsDialog.setWindowTitle(QCoreApplication.translate("SerialSettingsDialog", u"\u4e32\u53e3\u9ad8\u7ea7\u8bbe\u7f6e", None))
+        SerialSettingsDialog.setWindowTitle(QCoreApplication.translate("SerialSettingsDialog", u"\u66f4\u591a\u8bbe\u7f6e", None))
+        self.serialGroupBox.setTitle(QCoreApplication.translate("SerialSettingsDialog", u"\u4e32\u53e3\u8bbe\u7f6e", None))
         self.databitsLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u6570\u636e\u4f4d\uff1a", None))
         self.stopbitsLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u505c\u6b62\u4f4d\uff1a", None))
         self.parityLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u6821\u9a8c\u4f4d\uff1a", None))
         self.flowcontrolLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u6d41\u63a7\u5236\uff1a", None))
+        self.commonGroupBox.setTitle(QCoreApplication.translate("SerialSettingsDialog", u"\u901a\u7528\u8bbe\u7f6e", None))
         self.frameTimeoutLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u62fc\u5305\u8d85\u65f6\uff1a", None))
         self.frameTimeoutSpinBox.setSuffix(QCoreApplication.translate("SerialSettingsDialog", u" ms", None))
         self.frameTimeoutHint.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u8bf4\u660e\uff1a\u62fc\u5305\u8d85\u65f6\u7528\u4e8e\u5c06\u540c\u4e00\u5e27\u6570\u636e\u5408\u5e76\u663e\u793a\uff0c\u8d85\u65f6\u65f6\u95f4\u8d8a\u957f\u5408\u5e76\u8d8a\u591a", None))
+        self.ansiCheckBox.setText(QCoreApplication.translate("SerialSettingsDialog", u"ANSI\u989c\u8272\u663e\u793a", None))
         self.rttGroupBox.setTitle(QCoreApplication.translate("SerialSettingsDialog", u"RTT \u8bbe\u5907\u914d\u7f6e (J-Link)", None))
         self.rttChipLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u82af\u7247\u578b\u53f7\uff1a", None))
         self.rttSpeedLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"J-Link \u901f\u5ea6\uff1a", None))

@@ -41,6 +41,7 @@ class SocketManager(IOTransport):
             'port': 8080,
             'protocol': 'TCP',
             'role': 'Server',
+            'frame_timeout': 50,
         }
 
     def get_available_devices(self):
@@ -65,6 +66,7 @@ class SocketManager(IOTransport):
                 self._disconnect_internal()
 
             try:
+                frame_timeout = self.settings.get('frame_timeout', 50)
                 if protocol == 'TCP' and role == 'Server':
                     self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -72,7 +74,7 @@ class SocketManager(IOTransport):
                     self.server_sock.bind((host, port))
                     self.server_sock.listen(5)
                     self._mode = 'tcp_server'
-                    self.reader_thread = SocketReaderThread(self.server_sock, 'tcp_server')
+                    self.reader_thread = SocketReaderThread(self.server_sock, 'tcp_server', frame_timeout)
 
                 elif protocol == 'TCP' and role == 'Client':
                     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -80,21 +82,21 @@ class SocketManager(IOTransport):
                     self.sock.connect((host, port))
                     self.sock.setblocking(False)
                     self._mode = 'tcp_client'
-                    self.reader_thread = SocketReaderThread(self.sock, 'tcp_client')
+                    self.reader_thread = SocketReaderThread(self.sock, 'tcp_client', frame_timeout)
 
                 elif protocol == 'UDP' and role == 'Server':
                     self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     self.sock.setblocking(False)
                     self.sock.bind((host, port))
                     self._mode = 'udp_server'
-                    self.reader_thread = SocketReaderThread(self.sock, 'udp')
+                    self.reader_thread = SocketReaderThread(self.sock, 'udp', frame_timeout)
 
                 elif protocol == 'UDP' and role == 'Client':
                     self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     self.sock.setblocking(False)
                     self._mode = 'udp_client'
                     self._remote_addr = (host, port)
-                    self.reader_thread = SocketReaderThread(self.sock, 'udp')
+                    self.reader_thread = SocketReaderThread(self.sock, 'udp', frame_timeout)
 
                 else:
                     raise ValueError(f"Unknown mode: {protocol}/{role}")

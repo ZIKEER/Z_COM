@@ -1,4 +1,5 @@
 import socket
+import select
 import threading
 from PySide6.QtCore import Signal, QThread
 
@@ -8,13 +9,14 @@ class SocketReaderThread(QThread):
     error_occurred = Signal(str)
     client_event = Signal(str, tuple)  # ('connected'|'disconnected', (host,port))
 
-    def __init__(self, sock, mode):
+    def __init__(self, sock, mode, frame_timeout=50):
         """
         mode: 'tcp_client' | 'tcp_server' | 'udp'
         """
         super().__init__()
         self._sock = sock
         self._mode = mode
+        self._frame_timeout = frame_timeout / 1000.0
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._current_client = None
@@ -66,60 +68,61 @@ class SocketReaderThread(QThread):
 
     def run(self):
         self._stop_event.clear()
+        poll_interval = self._frame_timeout
         while not self._stop_event.is_set():
             try:
                 if self._mode == 'tcp_client':
-                    try:
+                    rlist, _, _ = select.select([self._sock], [], [], poll_interval)
+                    if rlist:
                         data = self._sock.recv(65536)
                         if data:
                             self.data_received.emit(bytes(data))
                         else:
                             break
-                    except BlockingIOError:
-                        self.msleep(20)
 
                 elif self._mode == 'tcp_server':
-                    try:
+                    rlist, _, _ = select.select([self._sock], [], [], 0)
+                    if rlist:
                         csock, addr = self._sock.accept()
                         csock.setblocking(False)
                         with self._lock:
                             self._clients[csock.fileno()] = (csock, addr)
                             self._current_client = addr
                         self.client_event.emit('connected', addr)
-                    except BlockingIOError:
-                        pass
 
                     with self._lock:
                         client_list = list(self._clients.items())
-                    for fileno, (csock, addr) in client_list:
-                        try:
-                            data = csock.recv(65536)
-                            if data:
-                                with self._lock:
-                                    self._current_client = addr
-                                self.data_received.emit(bytes(data))
-                            else:
+                    if client_list:
+                        socks = [csock for _, (csock, _) in client_list]
+                        rlist, _, _ = select.select(socks, [], [], poll_interval)
+                        for csock in rlist:
+                            fileno = csock.fileno()
+                            addr = next((a for fn, (c, a) in client_list if fn == fileno), None)
+                            try:
+                                data = csock.recv(65536)
+                                if data:
+                                    with self._lock:
+                                        self._current_client = addr
+                                    self.data_received.emit(bytes(data))
+                                else:
+                                    with self._lock:
+                                        self._remove_client(fileno)
+                            except Exception:
                                 with self._lock:
                                     self._remove_client(fileno)
-                        except BlockingIOError:
-                            pass
-                        except Exception:
-                            with self._lock:
-                                self._remove_client(fileno)
-
-                    self.msleep(20)
+                    else:
+                        self.msleep(int(poll_interval * 1000))
 
                 elif self._mode == 'udp':
-                    try:
+                    rlist, _, _ = select.select([self._sock], [], [], poll_interval)
+                    if rlist:
                         data, addr = self._sock.recvfrom(65536)
                         if data:
                             self._current_client = addr
                             self.data_received.emit(bytes(data))
-                    except BlockingIOError:
-                        self.msleep(20)
 
                 else:
-                    self.msleep(20)
+                    self.msleep(int(poll_interval * 1000))
 
             except OSError as e:
                 if not self._stop_event.is_set():
