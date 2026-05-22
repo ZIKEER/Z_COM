@@ -41,7 +41,7 @@ class SerialReaderThread(QThread):
                             self.data_received.emit(bytes(self.buffer))
                             self.buffer.clear()
 
-                    self.msleep(1)
+                    self.msleep(10)
             except serial.SerialException as e:
                 self.error_occurred.emit(f"\u4e32\u53e3\u9519\u8bef: {str(e)}")
                 break

@@ -24,8 +24,8 @@ class SendItemWidget(QWidget):
         self._comment = comment
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(4)
+        layout.setContentsMargins(2, 1, 2, 1)
+        layout.setSpacing(2)
         
         # 数据输入框
         self.data_edit = QLineEdit()
@@ -39,7 +39,7 @@ class SendItemWidget(QWidget):
         self.send_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.send_btn.customContextMenuRequested.connect(self._show_context_menu)
         self.send_btn.clicked.connect(lambda: self.send_clicked.emit(self.item_id))
-        self.send_btn.setMinimumWidth(50)
+        self.send_btn.setMinimumWidth(40)
         layout.addWidget(self.send_btn)
         
         self._update_button_text()
@@ -49,10 +49,10 @@ class SendItemWidget(QWidget):
         if self._comment:
             metrics = QFontMetrics(self.send_btn.font())
             text_width = metrics.horizontalAdvance(self._comment) + 16
-            self.send_btn.setMinimumWidth(min(max(text_width, 50), 200))
+            self.send_btn.setMinimumWidth(min(max(text_width, 40), 200))
             self.send_btn.setText(self._comment)
         else:
-            self.send_btn.setMinimumWidth(50)
+            self.send_btn.setMinimumWidth(40)
             self.send_btn.setText("发送")
     
     def set_data(self, data):
@@ -122,14 +122,27 @@ class ExtendedSendWidget(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # 延时
         
         self.ui.dataTable.setColumnWidth(0, 40)
-        self.ui.dataTable.setColumnWidth(2, 50)
-        self.ui.dataTable.setColumnWidth(3, 75)
+        self.ui.dataTable.setColumnWidth(2, 35)
+        self.ui.dataTable.setColumnWidth(3, 70)
         
         # 隐藏垂直表头
         self.ui.dataTable.verticalHeader().setVisible(False)
         
         # 设置行高
-        self.ui.dataTable.verticalHeader().setDefaultSectionSize(36)
+        self.ui.dataTable.verticalHeader().setDefaultSectionSize(28)
+        
+        # 设置表格紧凑样式
+        self.ui.dataTable.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #E0E0E0;
+            }
+            QTableWidget::item {
+                padding: 1px;
+            }
+            QHeaderView::section {
+                padding: 2px;
+            }
+        """)
         
         # 设置右键菜单
         self.ui.dataTable.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -253,7 +266,7 @@ class ExtendedSendWidget(QWidget):
             order_edit = QLineEdit()
             order_edit.setText(str(item.get('sort_order', 0)))
             order_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            order_edit.setMaximumWidth(40)
+            order_edit.setMaximumWidth(35)
             order_edit.setMaxLength(3)
             order_edit.textChanged.connect(lambda text, iid=item_id: self._on_order_changed(iid, text))
             self.ui.dataTable.setCellWidget(row, 2 + col_offset, order_edit)
@@ -261,13 +274,13 @@ class ExtendedSendWidget(QWidget):
             # 延时
             delay_widget = QWidget()
             delay_layout = QHBoxLayout(delay_widget)
-            delay_layout.setContentsMargins(2, 0, 2, 0)
-            delay_layout.setSpacing(2)
+            delay_layout.setContentsMargins(1, 0, 1, 0)
+            delay_layout.setSpacing(1)
             
             delay_edit = QLineEdit()
             delay_edit.setText(str(item.get('delay', 1000)))
             delay_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            delay_edit.setMaximumWidth(50)
+            delay_edit.setMaximumWidth(45)
             delay_edit.textChanged.connect(lambda text, iid=item_id: self._on_delay_changed(iid, text))
             delay_layout.addWidget(delay_edit)
             

@@ -15,19 +15,19 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
-    <number>6</number>
+    <number>2</number>
    </property>
    <property name="leftMargin">
-    <number>6</number>
+    <number>4</number>
    </property>
    <property name="topMargin">
-    <number>6</number>
+    <number>4</number>
    </property>
    <property name="rightMargin">
-    <number>6</number>
+    <number>4</number>
    </property>
    <property name="bottomMargin">
-    <number>6</number>
+    <number>4</number>
    </property>
    <item>
     <widget class="QTableWidget" name="dataTable">
@@ -58,6 +58,9 @@
    </item>
    <item>
     <layout class="QHBoxLayout" name="controlLayout">
+     <property name="spacing">
+      <number>2</number>
+     </property>
      <item>
       <widget class="QPushButton" name="addButton">
        <property name="text">
@@ -100,12 +103,23 @@
       </spacer>
      </item>
      <item>
-      <widget class="QPushButton" name="loopSendButton">
+      <widget class="QCheckBox" name="multiSendCheckBox">
+       <property name="text">
+        <string>多条发送</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="loopSendCheckBox">
        <property name="text">
         <string>循环发送</string>
        </property>
-       <property name="checkable">
-        <bool>true</bool>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="startSendButton">
+       <property name="text">
+        <string>启动发送</string>
        </property>
       </widget>
      </item>
@@ -122,7 +136,13 @@
 3. 延时：发送后等待时间（毫秒）
 4. 左键点击发送按钮：发送单条数据
 5. 右键点击发送按钮：编辑注释
-6. 右键点击表格：弹出更多功能菜单</string>
+6. 右键点击表格：弹出更多功能菜单
+
+启动发送模式：
+- 未勾选多条+未勾选循环：发送序号1的条目一次
+- 未勾选多条+勾选循环：循环发送序号1的条目
+- 勾选多条+未勾选循环：按序号依次发送，完成后停止
+- 勾选多条+勾选循环：按序号依次发送，循环不停</string>
        </property>
       </widget>
      </item>

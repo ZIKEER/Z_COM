@@ -28,6 +28,10 @@ class ExtendedSendManager(QObject):
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
         self.config_file = os.path.join(self.config_dir, "extended_send.json")
         
+        self._save_debounce_timer = QTimer()
+        self._save_debounce_timer.setSingleShot(True)
+        self._save_debounce_timer.timeout.connect(self._save_config)
+        
         # 加载配置
         self._load_config()
     
@@ -75,12 +79,11 @@ class ExtendedSendManager(QObject):
         self.items_changed.emit()
     
     def update_item(self, item_id, **kwargs):
-        """更新一条数据"""
+        """更新一条数据（防抖保存，不触发全表刷新）"""
         for item in self.items:
             if item['id'] == item_id:
                 item.update(kwargs)
-                self._save_config()
-                self.items_changed.emit()
+                self._save_debounce_timer.start(500)
                 break
     
     def move_item(self, item_id, direction):
@@ -214,6 +217,12 @@ class ExtendedSendManager(QObject):
         self.is_sending = False
         self.is_looping = False
         self.send_timer.stop()
+
+    def flush(self):
+        """防抖定时器未触发时立即保存"""
+        if self._save_debounce_timer.isActive():
+            self._save_debounce_timer.stop()
+            self._save_config()
     
     def load_from_config(self, config_data):
         """从配置数据加载"""

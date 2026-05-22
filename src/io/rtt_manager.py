@@ -22,6 +22,7 @@ class RttManager(IOTransport):
             'reset': False,
             'start_address': '',
             'range_size': '',
+            'frame_timeout': 50,
         }
 
     def _import_pylink(self):
@@ -178,11 +179,13 @@ class RttManager(IOTransport):
                 self.is_connected = True
 
                 # 启动读取线程
+                frame_timeout = self.settings.get('frame_timeout', 50) / 1000.0
                 self.reader_thread = RttReaderThread(
                     self.jlink,
-                    buffer_idx=0,  # 使用通道 0
+                    buffer_idx=0,
                     read_size=8192,
-                    read_interval=0.002
+                    read_interval=0.002,
+                    frame_timeout=frame_timeout,
                 )
                 self.reader_thread.data_received.connect(self.data_received)
                 self.reader_thread.error_occurred.connect(self._on_thread_error)
