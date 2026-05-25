@@ -51,6 +51,7 @@ class TestConfigManager:
         assert r["speed"] == 4000
         assert r["chip"] == ""
         assert r["reset"] is False
+        assert r["frame_timeout"] == 50
 
     def test_rtt_chip_history(self, tmp_config_dir):
         cm = ConfigManager(config_dir=tmp_config_dir)

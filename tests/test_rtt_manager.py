@@ -18,7 +18,8 @@ class TestRttManager:
     def test_get_available_devices_no_pylink(self, qapp):
         from src.io.rtt_manager import RttManager
         mgr = RttManager()
-        with patch.object(mgr, "_import_pylink", return_value=None):
+        with patch.object(mgr.jlink_backend, "_import_pylink", return_value=None), \
+             patch("src.io.rtt_manager.DapLinkBackend.get_dap_devices", return_value=[]):
             assert mgr.get_available_devices() == []
 
     def test_get_available_devices_with_pylink(self, qapp):
@@ -32,7 +33,8 @@ class TestRttManager:
         mock_jlink_temp.open.side_effect = Exception("mock no device")
         mock_pylink.JLink.return_value = mock_jlink_temp
 
-        with patch.object(mgr, "_import_pylink", return_value=mock_pylink):
+        with patch.object(mgr.jlink_backend, "_import_pylink", return_value=mock_pylink), \
+             patch("src.io.rtt_manager.DapLinkBackend.get_dap_devices", return_value=[]):
             assert mgr.get_available_devices() == []
 
     def test_update_settings(self, qapp):
@@ -50,13 +52,13 @@ class TestRttManager:
         mock_jlink = _make_mock_jlink()
         mock_pylink.JLink.return_value = mock_jlink
 
-        with patch.object(mgr, "_import_pylink", return_value=mock_pylink), \
+        with patch.object(mgr.jlink_backend, "_import_pylink", return_value=mock_pylink), \
              patch("src.io.rtt_manager.RttReaderThread") as mock_thread_cls:
             mock_thread = MagicMock()
             mock_thread_cls.return_value = mock_thread
 
             with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
-                result = mgr.connect(serial_no=12345, chip="nRF52840", speed=4000,
+                result = mgr.connect(port_key="JLINK:SN=12345", chip="nRF52840", speed=4000,
                                      reset_flag=False, start_address=None, range_size=None)
 
         assert result is True
@@ -71,12 +73,14 @@ class TestRttManager:
         mock_jlink.connect.side_effect = Exception("No J-Link found")
         mock_pylink.JLink.return_value = mock_jlink
 
-        with patch.object(mgr, "_import_pylink", return_value=mock_pylink):
-            with qtbot.waitSignal(mgr.error_occurred, timeout=2000):
-                result = mgr.connect(serial_no=99999, chip="nRF52840", speed=4000,
-                                     reset_flag=False, start_address=None, range_size=None)
+        with patch.object(mgr.jlink_backend, "_import_pylink", return_value=mock_pylink):
+            try:
+                mgr.connect(port_key="JLINK:SN=99999", chip="nRF52840", speed=4000,
+                            reset_flag=False, start_address=None, range_size=None)
+                assert False, "expected connect failure"
+            except Exception as exc:
+                assert "No J-Link found" in str(exc)
 
-        assert result is False
         assert mgr.is_connected is False
 
     def test_disconnect(self, qapp, qtbot):
@@ -84,13 +88,14 @@ class TestRttManager:
         mgr = RttManager()
 
         mock_jlink = _make_mock_jlink()
-        mgr.jlink = mock_jlink
+        mgr._active_backend = MagicMock()
+        mgr._active_backend.disconnect.return_value = True
         mgr.is_connected = True
 
         with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
             result = mgr.disconnect()
 
-        assert result is True
+        assert result is None
         assert mgr.is_connected is False
 
     def test_send_data(self, qapp):
@@ -98,7 +103,7 @@ class TestRttManager:
         mgr = RttManager()
 
         mock_jlink = _make_mock_jlink()
-        mgr.jlink = mock_jlink
+        mgr._active_backend = mock_jlink
         mgr.is_connected = True
 
         result = mgr.send_data(b"Hello")
@@ -119,7 +124,7 @@ class TestRttManager:
         mgr = RttManager()
 
         mock_jlink = _make_mock_jlink()
-        mgr.jlink = mock_jlink
+        mgr._active_backend = mock_jlink
         mgr.is_connected = True
 
         result = mgr.send_data("48656C6C6F", is_hex=True)

@@ -8,10 +8,10 @@ class RttReaderThread(QThread):
     data_received = Signal(bytes)
     error_occurred = Signal(str)
 
-    def __init__(self, jlink, buffer_idx=0, read_size=8192, read_interval=0.002,
+    def __init__(self, backend, buffer_idx=0, read_size=8192, read_interval=0.002,
                  frame_timeout=0.05):
         super().__init__()
-        self.jlink = jlink
+        self.backend = backend
         self.buffer_idx = buffer_idx
         self.read_size = read_size
         self.read_interval = read_interval
@@ -24,8 +24,8 @@ class RttReaderThread(QThread):
         self.running = True
         while self.running:
             try:
-                if self.jlink.opened():
-                    rtt_data = self.jlink.rtt_read(self.buffer_idx, self.read_size)
+                if self.backend.is_opened():
+                    rtt_data = self.backend.rtt_read(self.buffer_idx, self.read_size)
                     if rtt_data:
                         self._buffer.extend(rtt_data)
                         self._last_receive_time = time.time()

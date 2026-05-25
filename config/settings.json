@@ -1,5 +1,5 @@
 {
-  "port": "COM3",
+  "port": "DAPLINK:ID=004000363232511836303936",
   "baudrate": "115200",
   "databits": "8",
   "stopbits": "1",

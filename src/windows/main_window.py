@@ -2,7 +2,7 @@ import sys
 import os
 from datetime import datetime
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout
-from PySide6.QtCore import QTimer, QThread, Qt
+from PySide6.QtCore import QTimer, QThread, Qt, Signal
 from PySide6.QtGui import QTextCursor, QIcon, QAction
 
 # 添加项目根目录到路径
@@ -258,11 +258,11 @@ class MainWindow(QMainWindow):
         if block_signals:
             self.ui.portCombo.blockSignals(False)
         
-        # 在后台线程扫描 J-Link 设备，避免阻塞 UI
+        # 在后台线程扫描 J-Link / DAP-Link 设备，避免阻塞 UI
         from PySide6.QtCore import QThread, Signal as QSignal
         
-        class JLinkScanThread(QThread):
-            """J-Link 扫描线程"""
+        class RttScanThread(QThread):
+            """RTT 设备扫描线程"""
             scan_finished = QSignal(list)
             
             def __init__(self, rtt_manager):
@@ -273,9 +273,9 @@ class MainWindow(QMainWindow):
                 devices = self.rtt_manager.get_available_devices()
                 self.scan_finished.emit(devices)
         
-        self._jlink_scan_thread = JLinkScanThread(self.rtt_manager)
-        self._jlink_scan_thread.scan_finished.connect(self._on_jlink_scan_finished)
-        self._jlink_scan_thread.start()
+        self._rtt_scan_thread = RttScanThread(self.rtt_manager)
+        self._rtt_scan_thread.scan_finished.connect(self._on_rtt_scan_finished)
+        self._rtt_scan_thread.start()
 
         # 添加 Socket 模式固定条目（置于末尾）
         socket_modes = [
@@ -290,20 +290,22 @@ class MainWindow(QMainWindow):
                 idx = self.ui.portCombo.count() - 1
                 self.ui.portCombo.setItemData(idx, display_text, Qt.ToolTipRole)
     
-    def _on_jlink_scan_finished(self, jlink_devices):
-        """J-Link 扫描完成回调（插入到 Socket 条目之前）"""
-        # 找到第一个 Socket 条目的位置
+    def _on_rtt_scan_finished(self, devices):
+        """RTT 设备扫描完成回调（插入到 Socket 条目之前）"""
         insert_pos = self.ui.portCombo.count()
         for i in range(self.ui.portCombo.count()):
             d = self.ui.portCombo.itemData(i)
             if d and str(d).startswith('SOCKET:'):
                 insert_pos = i
                 break
-        for sn, description in jlink_devices:
-            jlink_key = f"JLINK:SN={sn}"
-            if self.ui.portCombo.findData(jlink_key) < 0:
-                display_text = f"{jlink_key} - {description}"
-                self.ui.portCombo.insertItem(insert_pos, display_text, jlink_key)
+        for key, description in devices:
+            if isinstance(key, int):
+                port_key = f"JLINK:SN={key}"
+            else:
+                port_key = f"DAPLINK:ID={key}"
+            if self.ui.portCombo.findData(port_key) < 0:
+                display_text = f"{port_key} - {description}"
+                self.ui.portCombo.insertItem(insert_pos, display_text, port_key)
                 self.ui.portCombo.setItemData(insert_pos, display_text, Qt.ToolTipRole)
                 insert_pos += 1
     
@@ -384,7 +386,7 @@ class MainWindow(QMainWindow):
                 self.ui.ipCombo.clear()
                 self.ui.ipCombo.setEditable(True)
                 self.ui.ipCombo.setPlaceholderText("输入目标 IP")
-        elif port_data.startswith('JLINK:'):
+        elif port_data.startswith('JLINK:') or port_data.startswith('DAPLINK:'):
             self.ui.baudrateStack.setCurrentIndex(0)
             self.ui.baudrateCombo.setEnabled(False)
         else:
@@ -409,22 +411,27 @@ class MainWindow(QMainWindow):
                 role = 'Server' if 'Server' in port else 'Client'
                 if self.socket_manager.connect(host, port_val, protocol, role):
                     self.io_mode = 'socket'
-            elif port and port.startswith('JLINK:'):
-                sn = port.replace('JLINK:SN=', '')
+            elif port and (port.startswith('JLINK:') or port.startswith('DAPLINK:')):
+                self.ui.openButton.setEnabled(False)
+                self.ui.refreshButton.setEnabled(False)
+                self.ui.portCombo.setEnabled(False)
+                self.ui.statusLabel.setText('RTT 连接中…')
+                self.ui.statusLabel.setStyleSheet("color: orange;")
+                self.io_mode = 'rtt'
                 rtt_settings = self.config_manager.get_rtt_settings()
                 chip = rtt_settings.get('chip', '')
-                success = self.rtt_manager.connect(
-                    serial_no=sn,
+                self._rtt_connect_thread = RttConnectThread(
+                    self.rtt_manager,
+                    port_key=port,
                     chip=chip,
                     speed=rtt_settings.get('speed'),
                     reset_flag=rtt_settings.get('reset'),
                     start_address=rtt_settings.get('start_address') or None,
-                    range_size=rtt_settings.get('range_size') or None
+                    range_size=rtt_settings.get('range_size') or None,
                 )
-                if success:
-                    self.io_mode = 'rtt'
-                    if chip:
-                        self.config_manager.add_rtt_chip_history(chip)
+                self._rtt_connect_thread.finished_ok.connect(self._on_rtt_connect_finished)
+                self._rtt_connect_thread.failed.connect(self._on_rtt_connect_failed)
+                self._rtt_connect_thread.start()
             else:
                 self.serial_manager.connect(port)
                 self.io_mode = 'serial'
@@ -652,7 +659,7 @@ class MainWindow(QMainWindow):
 
 功能特性：
 • 支持串口（Serial）通信
-• 支持 J-Link RTT 数据收发
+• 支持 J-Link / DAP-Link RTT 数据收发
 • 支持 TCP/UDP Socket 通信
 • 支持 HEX/ASCII/HEX+ASCII 多种显示模式
 • 支持数据帧自动拼接（可调超时时间）
@@ -766,6 +773,26 @@ class MainWindow(QMainWindow):
         
         self._save_debounce_timer.start(500)
     
+    def _on_rtt_connect_finished(self, chip):
+        """RTT 后台连接成功"""
+        if chip:
+            self.config_manager.add_rtt_chip_history(chip)
+        self.ui.openButton.setEnabled(True)
+        self.ui.refreshButton.setEnabled(False)
+        self.ui.portCombo.setEnabled(False)
+
+    def _on_rtt_connect_failed(self, error_msg):
+        """RTT 后台连接失败"""
+        self.io_mode = 'serial'
+        self.ui.openButton.setEnabled(True)
+        self.ui.refreshButton.setEnabled(True)
+        self.ui.portCombo.setEnabled(True)
+        self.ui.openButton.setText(self._MODE_OPEN_TEXT)
+        self.ui.openButton.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
+        self.ui.statusLabel.setText('已断开')
+        self.ui.statusLabel.setStyleSheet("color: red;")
+        QMessageBox.critical(self, 'RTT 错误', f'RTT 连接失败：{error_msg}')
+
     def closeEvent(self, event):
         """关闭事件"""
         self.logger.flush()
@@ -775,3 +802,33 @@ class MainWindow(QMainWindow):
             self._io.disconnect()
         self.extended_send_manager.stop_sending()
         event.accept()
+
+
+class RttConnectThread(QThread):
+    """RTT 后台连接线程"""
+    finished_ok = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, rtt_manager, port_key, chip, speed, reset_flag, start_address, range_size, parent=None):
+        super().__init__(parent)
+        self.rtt_manager = rtt_manager
+        self.port_key = port_key
+        self.chip = chip or ''
+        self.speed = speed
+        self.reset_flag = reset_flag
+        self.start_address = start_address
+        self.range_size = range_size
+
+    def run(self):
+        try:
+            self.rtt_manager.connect(
+                port_key=self.port_key,
+                chip=self.chip,
+                speed=self.speed,
+                reset_flag=self.reset_flag,
+                start_address=self.start_address,
+                range_size=self.range_size,
+            )
+            self.finished_ok.emit(self.chip)
+        except Exception as e:
+            self.failed.emit(str(e))
