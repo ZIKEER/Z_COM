@@ -1,6 +1,11 @@
 import os
 import json
 from src.core.extended_send_manager import ExtendedSendManager, decode_ascii_escapes, encode_ascii_for_display
+from src.windows.extended_send_widget import (
+    SendItemWidget,
+    DEFAULT_SEND_BUTTON_TEXT,
+    ELLIPSIS_PREFIX_CHARS,
+)
 
 
 class TestExtendedSendManager:
@@ -137,3 +142,44 @@ class TestExtendedSendManager:
         a = mgr.add_item("A", is_hex=False)
         b = mgr.add_item("B", is_hex=False)
         assert b["id"] == a["id"] + 1
+
+
+class TestSendItemWidget:
+    def test_comment_button_shows_comment_instead_of_default_text(self, qapp):
+        widget = SendItemWidget(1, data="ABC", comment="这是一个很长的注释")
+
+        assert "这是" in widget.send_btn.text()
+        assert "\n" in widget.send_btn.text() or len(widget.send_btn.text()) <= 2
+        assert "注释:" in widget.send_btn.toolTip()
+
+    def test_data_tooltip_contains_full_visible_content(self, qapp):
+        widget = SendItemWidget(1, data="line1\nline2\tend", comment="备注")
+
+        assert r"line1\nline2\tend" in widget.data_edit.toolTip()
+        assert "注释: 备注" in widget.data_edit.toolTip()
+
+    def test_default_send_button_text_without_comment(self, qapp):
+        widget = SendItemWidget(1, data="ABC", comment="")
+
+        assert widget.send_btn.text() == DEFAULT_SEND_BUTTON_TEXT
+
+    def test_comment_button_text_is_two_line_prefix_when_long(self, qapp):
+        widget = SendItemWidget(1, data="ABC", comment="这是一个很长很长的注释文本用于测试按钮截断")
+
+        lines = widget.send_btn.text().splitlines()
+        assert len(lines) <= 2
+        assert lines[0].startswith("这")
+
+    def test_comment_within_16_chars_is_fully_visible(self, qapp):
+        comment = "一二三四五六七八九十一二三四五六"
+        widget = SendItemWidget(1, data="ABC", comment=comment)
+
+        assert widget.send_btn.text().replace("\n", "") == comment
+
+    def test_comment_over_16_chars_uses_ellipsis(self, qapp):
+        comment = "一二三四五六七八九十一二三四五六七八九十"
+        widget = SendItemWidget(1, data="ABC", comment=comment)
+
+        rendered = widget.send_btn.text().replace("\n", "")
+        assert rendered.endswith("...")
+        assert rendered == comment[:ELLIPSIS_PREFIX_CHARS] + "..."

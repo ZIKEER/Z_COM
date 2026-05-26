@@ -3,13 +3,20 @@ from PySide6.QtWidgets import (QWidget, QTableWidgetItem, QCheckBox, QPushButton
                                 QFileDialog, QMessageBox, QHeaderView, QMenu,
                                 QHBoxLayout, QLabel, QLineEdit, QDialog)
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QAction, QFontMetrics, QCursor, QColor
+from PySide6.QtGui import QAction, QCursor, QColor, QFont, QFontMetrics
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from ui.Ui_extended_send_widget import Ui_ExtendedSendWidget
 from src.core.extended_send_manager import encode_ascii_for_display, decode_ascii_escapes
 from src.windows.extended_send_editor_dialog import ExtendedSendEditorDialog
+
+
+DEFAULT_SEND_BUTTON_TEXT = "发"
+MAX_COMMENT_CHARS = 16
+MAX_COMMENT_LINES = 2
+ELLIPSIS_TRIGGER_CHARS = 16
+ELLIPSIS_PREFIX_CHARS = 15
 
 
 class SendItemWidget(QWidget):
@@ -24,26 +31,33 @@ class SendItemWidget(QWidget):
         self.item_id = item_id
         self._data = data
         self._comment = comment
+
+        mono_font = QFont("Consolas", 9)
+        mono_font.setStyleHint(QFont.StyleHint.Monospace)
+        self._default_button_font = QFont(self.font())
+        self._comment_button_font = QFont(self.font())
+        self._comment_button_font.setPointSize(max(self._comment_button_font.pointSize() - 2, 8))
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 1, 2, 1)
-        layout.setSpacing(2)
+        layout.setContentsMargins(1, 0, 1, 0)
+        layout.setSpacing(1)
         
         # 数据输入框
         self.data_edit = QLineEdit()
+        self.data_edit.setFont(mono_font)
         self.data_edit.setPlaceholderText(r"输入数据内容... ASCII 支持 \r \n \t \xNN")
         self.data_edit.setToolTip("ASCII 支持转义序列，右键可打开高级编辑")
+        self.data_edit.setStyleSheet("QLineEdit { padding: 0 2px; }")
         self.data_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.data_edit.customContextMenuRequested.connect(self._show_data_context_menu)
         self.data_edit.textChanged.connect(self._on_data_changed)
         layout.addWidget(self.data_edit, 1)
         
-        # 发送按钮（显示注释）
+        # 发送按钮使用固定窄宽，把更多空间留给数据内容。
         self.send_btn = QPushButton()
         self.send_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.send_btn.customContextMenuRequested.connect(self._show_context_menu)
         self.send_btn.clicked.connect(lambda: self.send_clicked.emit(self.item_id))
-        self.send_btn.setMinimumWidth(40)
         layout.addWidget(self.send_btn)
 
         self.set_data(data)
@@ -52,13 +66,60 @@ class SendItemWidget(QWidget):
     def _update_button_text(self):
         """更新按钮文本"""
         if self._comment:
-            metrics = QFontMetrics(self.send_btn.font())
-            text_width = metrics.horizontalAdvance(self._comment) + 16
-            self.send_btn.setMinimumWidth(min(max(text_width, 40), 200))
-            self.send_btn.setText(self._comment)
+            button_text, display_font = self._build_comment_button_content(self._comment)
+            self.send_btn.setFont(display_font)
+            self.send_btn.setText(button_text)
+            self.send_btn.setToolTip(f"发送此条数据\n注释: {self._comment}\n右键可编辑注释")
+            self.send_btn.setStyleSheet("font-weight: bold;")
         else:
-            self.send_btn.setMinimumWidth(40)
-            self.send_btn.setText("发送")
+            self.send_btn.setFont(self._default_button_font)
+            self.send_btn.setText(DEFAULT_SEND_BUTTON_TEXT)
+            self.send_btn.setToolTip("发送此条数据\n右键可编辑注释")
+            self.send_btn.setStyleSheet("")
+
+        self._update_button_size()
+        self._update_data_tooltip()
+
+    def _build_comment_button_content(self, comment):
+        comment = self._normalize_comment(comment)
+        if not comment:
+            return DEFAULT_SEND_BUTTON_TEXT, self._default_button_font
+
+        truncated = comment[:MAX_COMMENT_CHARS]
+        if len(comment) > ELLIPSIS_TRIGGER_CHARS:
+            truncated = comment[:ELLIPSIS_PREFIX_CHARS] + "..."
+
+        display_font = QFont(self._comment_button_font)
+        if len(truncated) <= 6:
+            display_font.setPointSize(max(self._default_button_font.pointSize() - 1, 9))
+        elif len(truncated) <= 10:
+            display_font.setPointSize(max(self._default_button_font.pointSize() - 2, 8))
+        else:
+            display_font.setPointSize(max(self._default_button_font.pointSize() - 3, 8))
+
+        if len(truncated) <= 8:
+            return truncated, display_font
+
+        split_index = self._get_balanced_split_index(truncated)
+        first_line = truncated[:split_index]
+        second_line = truncated[split_index:]
+        return f"{first_line}\n{second_line}", display_font
+
+    def _normalize_comment(self, comment):
+        return " ".join((comment or "").replace("\r", " ").replace("\n", " ").split())
+
+    def _get_balanced_split_index(self, text):
+        max_per_line = (MAX_COMMENT_CHARS + MAX_COMMENT_LINES - 1) // MAX_COMMENT_LINES
+        return min(max((len(text) + 1) // 2, 1), max_per_line)
+
+    def _update_button_size(self):
+        metrics = QFontMetrics(self.send_btn.font())
+        lines = self.send_btn.text().splitlines() or [DEFAULT_SEND_BUTTON_TEXT]
+        widest_line = max(metrics.horizontalAdvance(line) for line in lines)
+        width = widest_line + 14
+        height = (metrics.height() * len(lines)) + 10
+        self.send_btn.setFixedWidth(max(width, 30))
+        self.send_btn.setFixedHeight(max(height, 26))
     
     def set_data(self, data):
         """设置数据"""
@@ -69,11 +130,19 @@ class SendItemWidget(QWidget):
         self.data_edit.blockSignals(True)
         self.data_edit.setText(display_text)
         self.data_edit.blockSignals(False)
+        self._update_data_tooltip()
     
     def set_comment(self, comment):
         """设置注释"""
         self._comment = comment
         self._update_button_text()
+
+    def _update_data_tooltip(self):
+        display_text = encode_ascii_for_display(self._data)
+        tooltip_lines = [display_text or "<空>", "右键可打开高级编辑"]
+        if self._comment:
+            tooltip_lines.append(f"注释: {self._comment}")
+        self.data_edit.setToolTip("\n".join(tooltip_lines))
     
     def _on_data_changed(self, text):
         """数据内容改变"""
@@ -153,15 +222,15 @@ class ExtendedSendWidget(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # 序号
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # 延时
         
-        self.ui.dataTable.setColumnWidth(0, 40)
-        self.ui.dataTable.setColumnWidth(2, 35)
-        self.ui.dataTable.setColumnWidth(3, 70)
+        self.ui.dataTable.setColumnWidth(0, 34)
+        self.ui.dataTable.setColumnWidth(2, 34)
+        self.ui.dataTable.setColumnWidth(3, 62)
         
         # 隐藏垂直表头
         self.ui.dataTable.verticalHeader().setVisible(False)
         
-        # 设置行高
-        self.ui.dataTable.verticalHeader().setDefaultSectionSize(28)
+        # 给双行注释按钮留出基础高度，后续再按内容微调。
+        self.ui.dataTable.verticalHeader().setDefaultSectionSize(34)
         
         # 设置表格紧凑样式
         self.ui.dataTable.setStyleSheet("""
@@ -169,10 +238,10 @@ class ExtendedSendWidget(QWidget):
                 gridline-color: #E0E0E0;
             }
             QTableWidget::item {
-                padding: 1px;
+                padding: 0px;
             }
             QHeaderView::section {
-                padding: 2px;
+                padding: 1px 2px;
             }
         """)
         
@@ -245,7 +314,7 @@ class ExtendedSendWidget(QWidget):
             if self.ui.dataTable.columnCount() == 4:
                 self.ui.dataTable.insertColumn(0)
                 self.ui.dataTable.setHorizontalHeaderLabels(['选择', 'HEX', '数据内容/注释', '序号', '延时'])
-                self.ui.dataTable.setColumnWidth(0, 35)
+                self.ui.dataTable.setColumnWidth(0, 30)
         
         for item in self.manager.items:
             row = self.ui.dataTable.rowCount()
@@ -298,8 +367,9 @@ class ExtendedSendWidget(QWidget):
             order_edit = QLineEdit()
             order_edit.setText(str(item.get('sort_order', 0)))
             order_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            order_edit.setMaximumWidth(35)
+            order_edit.setMaximumWidth(32)
             order_edit.setMaxLength(3)
+            order_edit.setStyleSheet("QLineEdit { padding: 0 1px; }")
             order_edit.textChanged.connect(lambda text, iid=item_id: self._on_order_changed(iid, text))
             self.ui.dataTable.setCellWidget(row, 2 + col_offset, order_edit)
             
@@ -312,14 +382,19 @@ class ExtendedSendWidget(QWidget):
             delay_edit = QLineEdit()
             delay_edit.setText(str(item.get('delay', 1000)))
             delay_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            delay_edit.setMaximumWidth(45)
+            delay_edit.setMaximumWidth(40)
+            delay_edit.setStyleSheet("QLineEdit { padding: 0 1px; }")
             delay_edit.textChanged.connect(lambda text, iid=item_id: self._on_delay_changed(iid, text))
             delay_layout.addWidget(delay_edit)
             
             delay_unit = QLabel("ms")
+            delay_unit.setStyleSheet("color: #666;")
             delay_layout.addWidget(delay_unit)
             
             self.ui.dataTable.setCellWidget(row, 3 + col_offset, delay_widget)
+
+            row_height = max(item_widget.sizeHint().height() + 2, 34)
+            self.ui.dataTable.setRowHeight(row, row_height)
         
         # 更新按钮文本
         self._update_button_texts()

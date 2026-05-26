@@ -27,7 +27,7 @@ class Ui_ExtendedSendWidget(object):
         self.verticalLayout = QVBoxLayout(ExtendedSendWidget)
         self.verticalLayout.setSpacing(2)
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.verticalLayout.setContentsMargins(4, 4, 4, 4)
+        self.verticalLayout.setContentsMargins(2, 2, 2, 2)
         self.dataTable = QTableWidget(ExtendedSendWidget)
         if (self.dataTable.columnCount() < 4):
             self.dataTable.setColumnCount(4)
