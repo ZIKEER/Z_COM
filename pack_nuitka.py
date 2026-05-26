@@ -17,17 +17,31 @@ def get_version():
     return VERSION
 
 
-def clean_build():
-    """清理构建文件"""
-    # 清理 build 目录
+def clean_build(version=""):
+    """清理构建临时文件与当前版本的输出目录（保留其它版本）"""
+    # 清理 Nuitka 编译缓存
     if os.path.isdir("build"):
         shutil.rmtree("build")
         print("  已删除: build")
-    
-    # 清理 dist_nuitka 目录下的所有内容
-    if os.path.isdir("dist_nuitka"):
-        shutil.rmtree("dist_nuitka")
-        print("  已删除: dist_nuitka")
+
+    if not os.path.isdir("dist_nuitka"):
+        return
+
+    # 清理 Nuitka 默认输出 run.dist（上次失败遗留）
+    run_dist = os.path.join("dist_nuitka", "run.dist")
+    if os.path.isdir(run_dist):
+        shutil.rmtree(run_dist)
+        print(f"  已删除: {run_dist}")
+
+    # 清理当前版本的目标目录（用于重新打包）
+    if version:
+        target = os.path.join("dist_nuitka", f"Z_COM_V{version}")
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+            print(f"  已删除: {target}")
+
+    # 清理 Nuitka 临时目录（*.dist / *.build / *.onefile-build）
+    clean_nuitka_temps()
 
 
 def create_icon():
@@ -161,9 +175,9 @@ def build():
     print("[信息] 写入编译时间...")
     update_build_time(build_time)
     
-    # 清理旧文件
+    # 清理旧文件（仅清理临时文件和当前版本目录，保留其它历史版本）
     print("[信息] 清理旧的构建文件...")
-    clean_build()
+    clean_build(version)
     
     # 检查/生成图标
     has_icon = create_icon()
