@@ -43,9 +43,120 @@ class Ui_MainWindow(object):
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
         self.verticalLayout = QVBoxLayout(self.centralwidget)
-        self.verticalLayout.setSpacing(2)
+        self.verticalLayout.setSpacing(4)
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.verticalLayout.setContentsMargins(2, 2, 2, 2)
+        self.verticalLayout.setContentsMargins(4, 4, 4, 4)
+        self.statusBarToolbar = QWidget(self.centralwidget)
+        self.statusBarToolbar.setObjectName(u"statusBarToolbar")
+        self.statusBarToolbar.setMaximumSize(QSize(16777215, 36))
+        self.statusBarLayout = QHBoxLayout(self.statusBarToolbar)
+        self.statusBarLayout.setSpacing(4)
+        self.statusBarLayout.setObjectName(u"statusBarLayout")
+        self.statusBarLayout.setContentsMargins(2, 0, 2, 0)
+        self.refreshButton = QPushButton(self.statusBarToolbar)
+        self.refreshButton.setObjectName(u"refreshButton")
+        self.refreshButton.setMaximumSize(QSize(84, 16777215))
+
+        self.statusBarLayout.addWidget(self.refreshButton)
+
+        self.portLabel = QLabel(self.statusBarToolbar)
+        self.portLabel.setObjectName(u"portLabel")
+
+        self.statusBarLayout.addWidget(self.portLabel)
+
+        self.portCombo = QComboBox(self.statusBarToolbar)
+        self.portCombo.setObjectName(u"portCombo")
+        self.portCombo.setMinimumSize(QSize(180, 0))
+        self.portCombo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+
+        self.statusBarLayout.addWidget(self.portCombo)
+
+        self.baudrateStack = QStackedWidget(self.statusBarToolbar)
+        self.baudrateStack.setObjectName(u"baudrateStack")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.baudrateStack.sizePolicy().hasHeightForWidth())
+        self.baudrateStack.setSizePolicy(sizePolicy)
+        self.baudratePage = QWidget()
+        self.baudratePage.setObjectName(u"baudratePage")
+        self.baudratePageLayout = QHBoxLayout(self.baudratePage)
+        self.baudratePageLayout.setSpacing(6)
+        self.baudratePageLayout.setObjectName(u"baudratePageLayout")
+        self.baudratePageLayout.setContentsMargins(0, 0, 0, 0)
+        self.baudrateLabel = QLabel(self.baudratePage)
+        self.baudrateLabel.setObjectName(u"baudrateLabel")
+
+        self.baudratePageLayout.addWidget(self.baudrateLabel)
+
+        self.baudrateCombo = QComboBox(self.baudratePage)
+        self.baudrateCombo.setObjectName(u"baudrateCombo")
+        self.baudrateCombo.setMinimumSize(QSize(90, 0))
+
+        self.baudratePageLayout.addWidget(self.baudrateCombo)
+
+        self.baudratePageSpacer = QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.baudratePageLayout.addItem(self.baudratePageSpacer)
+
+        self.baudrateStack.addWidget(self.baudratePage)
+        self.socketPage = QWidget()
+        self.socketPage.setObjectName(u"socketPage")
+        self.socketPageLayout = QHBoxLayout(self.socketPage)
+        self.socketPageLayout.setSpacing(6)
+        self.socketPageLayout.setObjectName(u"socketPageLayout")
+        self.socketPageLayout.setContentsMargins(0, 0, 0, 0)
+        self.ipCombo = QComboBox(self.socketPage)
+        self.ipCombo.setObjectName(u"ipCombo")
+        self.ipCombo.setMinimumSize(QSize(110, 0))
+        self.ipCombo.setEditable(True)
+
+        self.socketPageLayout.addWidget(self.ipCombo)
+
+        self.portSpin = QSpinBox(self.socketPage)
+        self.portSpin.setObjectName(u"portSpin")
+        self.portSpin.setMinimum(1)
+        self.portSpin.setMaximum(65535)
+        self.portSpin.setValue(8080)
+
+        self.socketPageLayout.addWidget(self.portSpin)
+
+        self.socketPageSpacer = QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.socketPageLayout.addItem(self.socketPageSpacer)
+
+        self.baudrateStack.addWidget(self.socketPage)
+
+        self.statusBarLayout.addWidget(self.baudrateStack)
+
+        self.statusBarSpacer = QSpacerItem(10, 10, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.statusBarLayout.addItem(self.statusBarSpacer)
+
+        self.openButton = QPushButton(self.statusBarToolbar)
+        self.openButton.setObjectName(u"openButton")
+        self.openButton.setMaximumSize(QSize(92, 16777215))
+        self.openButton.setMinimumSize(QSize(84, 0))
+
+        self.statusBarLayout.addWidget(self.openButton)
+
+        self.settingsButton = QPushButton(self.statusBarToolbar)
+        self.settingsButton.setObjectName(u"settingsButton")
+        self.settingsButton.setMinimumSize(QSize(84, 0))
+        self.settingsButton.setMaximumSize(QSize(92, 16777215))
+
+        self.statusBarLayout.addWidget(self.settingsButton)
+
+        self.togglePresetButton = QPushButton(self.statusBarToolbar)
+        self.togglePresetButton.setObjectName(u"togglePresetButton")
+        self.togglePresetButton.setMaximumSize(QSize(84, 16777215))
+        self.togglePresetButton.setCheckable(True)
+
+        self.statusBarLayout.addWidget(self.togglePresetButton)
+
+
+        self.verticalLayout.addWidget(self.statusBarToolbar)
+
         self.mainSplitter = QSplitter(self.centralwidget)
         self.mainSplitter.setObjectName(u"mainSplitter")
         self.mainSplitter.setOrientation(Qt.Orientation.Vertical)
@@ -105,29 +216,23 @@ class Ui_MainWindow(object):
         self.topSplitter.addWidget(self.receiveGroup)
         self.extendedSendContainer = QWidget(self.topSplitter)
         self.extendedSendContainer.setObjectName(u"extendedSendContainer")
-        self.extendedSendContainer.setMinimumSize(QSize(80, 0))
+        self.extendedSendContainer.setMinimumSize(QSize(260, 0))
         self.extendedSendContainer.setVisible(False)
         self.topSplitter.addWidget(self.extendedSendContainer)
         self.mainSplitter.addWidget(self.topSplitter)
         self.sendGroup = QGroupBox(self.mainSplitter)
         self.sendGroup.setObjectName(u"sendGroup")
-        self.sendGroup.setMinimumSize(QSize(0, 40))
+        self.sendGroup.setMinimumSize(QSize(0, 96))
+        self.sendGroup.setMaximumSize(QSize(16777215, 156))
         self.sendMainLayout = QHBoxLayout(self.sendGroup)
-        self.sendMainLayout.setSpacing(2)
+        self.sendMainLayout.setSpacing(4)
         self.sendMainLayout.setObjectName(u"sendMainLayout")
-        self.sendMainLayout.setContentsMargins(2, 2, 2, 2)
-        self.openButton = QPushButton(self.sendGroup)
-        self.openButton.setObjectName(u"openButton")
-        self.openButton.setMinimumSize(QSize(50, 0))
-        self.openButton.setMaximumSize(QSize(50, 16777215))
-
-        self.sendMainLayout.addWidget(self.openButton)
-
+        self.sendMainLayout.setContentsMargins(4, 4, 4, 4)
         self.sendCenterLayout = QVBoxLayout()
-        self.sendCenterLayout.setSpacing(1)
+        self.sendCenterLayout.setSpacing(2)
         self.sendCenterLayout.setObjectName(u"sendCenterLayout")
         self.sendConfigLayout = QHBoxLayout()
-        self.sendConfigLayout.setSpacing(2)
+        self.sendConfigLayout.setSpacing(4)
         self.sendConfigLayout.setObjectName(u"sendConfigLayout")
         self.sendAsciiRadio = QRadioButton(self.sendGroup)
         self.sendAsciiRadio.setObjectName(u"sendAsciiRadio")
@@ -167,6 +272,13 @@ class Ui_MainWindow(object):
 
         self.sendConfigLayout.addWidget(self.msLabel)
 
+        self.sendButton = QPushButton(self.sendGroup)
+        self.sendButton.setObjectName(u"sendButton")
+        self.sendButton.setMinimumSize(QSize(72, 0))
+        self.sendButton.setMaximumSize(QSize(84, 16777215))
+
+        self.sendConfigLayout.addWidget(self.sendButton)
+
 
         self.sendCenterLayout.addLayout(self.sendConfigLayout)
 
@@ -179,145 +291,9 @@ class Ui_MainWindow(object):
 
         self.sendMainLayout.addLayout(self.sendCenterLayout)
 
-        self.sendButton = QPushButton(self.sendGroup)
-        self.sendButton.setObjectName(u"sendButton")
-        self.sendButton.setMinimumSize(QSize(50, 0))
-        self.sendButton.setMaximumSize(QSize(50, 16777215))
-
-        self.sendMainLayout.addWidget(self.sendButton)
-
         self.mainSplitter.addWidget(self.sendGroup)
 
         self.verticalLayout.addWidget(self.mainSplitter)
-
-        self.statusBarToolbar = QWidget(self.centralwidget)
-        self.statusBarToolbar.setObjectName(u"statusBarToolbar")
-        self.statusBarToolbar.setMaximumSize(QSize(16777215, 30))
-        self.statusBarLayout = QHBoxLayout(self.statusBarToolbar)
-        self.statusBarLayout.setSpacing(2)
-        self.statusBarLayout.setObjectName(u"statusBarLayout")
-        self.statusBarLayout.setContentsMargins(3, 0, 3, 0)
-        self.refreshButton = QPushButton(self.statusBarToolbar)
-        self.refreshButton.setObjectName(u"refreshButton")
-        self.refreshButton.setMaximumSize(QSize(70, 16777215))
-
-        self.statusBarLayout.addWidget(self.refreshButton)
-
-        self.portLabel = QLabel(self.statusBarToolbar)
-        self.portLabel.setObjectName(u"portLabel")
-
-        self.statusBarLayout.addWidget(self.portLabel)
-
-        self.portCombo = QComboBox(self.statusBarToolbar)
-        self.portCombo.setObjectName(u"portCombo")
-        self.portCombo.setMinimumSize(QSize(150, 0))
-        self.portCombo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-
-        self.statusBarLayout.addWidget(self.portCombo)
-
-        self.baudrateStack = QStackedWidget(self.statusBarToolbar)
-        self.baudrateStack.setObjectName(u"baudrateStack")
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.baudrateStack.sizePolicy().hasHeightForWidth())
-        self.baudrateStack.setSizePolicy(sizePolicy)
-        self.baudratePage = QWidget()
-        self.baudratePage.setObjectName(u"baudratePage")
-        self.baudratePageLayout = QHBoxLayout(self.baudratePage)
-        self.baudratePageLayout.setSpacing(6)
-        self.baudratePageLayout.setObjectName(u"baudratePageLayout")
-        self.baudratePageLayout.setContentsMargins(0, 0, 0, 0)
-        self.baudrateLabel = QLabel(self.baudratePage)
-        self.baudrateLabel.setObjectName(u"baudrateLabel")
-
-        self.baudratePageLayout.addWidget(self.baudrateLabel)
-
-        self.baudrateCombo = QComboBox(self.baudratePage)
-        self.baudrateCombo.setObjectName(u"baudrateCombo")
-        self.baudrateCombo.setMinimumSize(QSize(80, 0))
-
-        self.baudratePageLayout.addWidget(self.baudrateCombo)
-
-        self.baudratePageSpacer = QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.baudratePageLayout.addItem(self.baudratePageSpacer)
-
-        self.baudrateStack.addWidget(self.baudratePage)
-        self.socketPage = QWidget()
-        self.socketPage.setObjectName(u"socketPage")
-        self.socketPageLayout = QHBoxLayout(self.socketPage)
-        self.socketPageLayout.setSpacing(6)
-        self.socketPageLayout.setObjectName(u"socketPageLayout")
-        self.socketPageLayout.setContentsMargins(0, 0, 0, 0)
-        self.ipCombo = QComboBox(self.socketPage)
-        self.ipCombo.setObjectName(u"ipCombo")
-        self.ipCombo.setMinimumSize(QSize(90, 0))
-        self.ipCombo.setEditable(True)
-
-        self.socketPageLayout.addWidget(self.ipCombo)
-
-        self.portSpin = QSpinBox(self.socketPage)
-        self.portSpin.setObjectName(u"portSpin")
-        self.portSpin.setMinimum(1)
-        self.portSpin.setMaximum(65535)
-        self.portSpin.setValue(8080)
-
-        self.socketPageLayout.addWidget(self.portSpin)
-
-        self.socketPageSpacer = QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.socketPageLayout.addItem(self.socketPageSpacer)
-
-        self.baudrateStack.addWidget(self.socketPage)
-
-        self.statusBarLayout.addWidget(self.baudrateStack)
-
-        self.settingsButton = QPushButton(self.statusBarToolbar)
-        self.settingsButton.setObjectName(u"settingsButton")
-        self.settingsButton.setMaximumSize(QSize(70, 16777215))
-
-        self.statusBarLayout.addWidget(self.settingsButton)
-
-        self.statusBarSpacer = QSpacerItem(10, 10, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.statusBarLayout.addItem(self.statusBarSpacer)
-
-        self.statusLabel = QLabel(self.statusBarToolbar)
-        self.statusLabel.setObjectName(u"statusLabel")
-        self.statusLabel.setMinimumSize(QSize(80, 0))
-
-        self.statusBarLayout.addWidget(self.statusLabel)
-
-        self.separator1 = QLabel(self.statusBarToolbar)
-        self.separator1.setObjectName(u"separator1")
-
-        self.statusBarLayout.addWidget(self.separator1)
-
-        self.sendCountLabel = QLabel(self.statusBarToolbar)
-        self.sendCountLabel.setObjectName(u"sendCountLabel")
-
-        self.statusBarLayout.addWidget(self.sendCountLabel)
-
-        self.separator2 = QLabel(self.statusBarToolbar)
-        self.separator2.setObjectName(u"separator2")
-
-        self.statusBarLayout.addWidget(self.separator2)
-
-        self.receiveCountLabel = QLabel(self.statusBarToolbar)
-        self.receiveCountLabel.setObjectName(u"receiveCountLabel")
-
-        self.statusBarLayout.addWidget(self.receiveCountLabel)
-
-        self.togglePresetButton = QPushButton(self.statusBarToolbar)
-        self.togglePresetButton.setObjectName(u"togglePresetButton")
-        self.togglePresetButton.setMaximumSize(QSize(70, 16777215))
-        self.togglePresetButton.setCheckable(True)
-
-        self.statusBarLayout.addWidget(self.togglePresetButton)
-
-
-        self.verticalLayout.addWidget(self.statusBarToolbar)
 
         MainWindow.setCentralWidget(self.centralwidget)
         self.statusbar = QStatusBar(MainWindow)
@@ -361,22 +337,6 @@ class Ui_MainWindow(object):
         self.actionSettings.setText(QCoreApplication.translate("MainWindow", u"\u66f4\u591a\u8bbe\u7f6e(&S)...", None))
         self.togglePresetAction.setText(QCoreApplication.translate("MainWindow", u"\u6269\u5c55\u53d1\u9001", None))
         self.actionAbout.setText(QCoreApplication.translate("MainWindow", u"\u5173\u4e8e", None))
-        self.receiveGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u663e\u793a\u533a\u57df", None))
-        self.hexRadio.setText(QCoreApplication.translate("MainWindow", u"HEX", None))
-        self.asciiRadio.setText(QCoreApplication.translate("MainWindow", u"ASCII", None))
-        self.mixedRadio.setText(QCoreApplication.translate("MainWindow", u"HEX+ASCII", None))
-        self.autoScrollCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u81ea\u52a8\u6eda\u52a8", None))
-        self.clearReceiveButton.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u7a7a", None))
-        self.sendGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u53d1\u9001\u533a\u57df", None))
-        self.openButton.setText(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\n"
-"\u7aef\u53e3", None))
-        self.sendAsciiRadio.setText(QCoreApplication.translate("MainWindow", u"ASCII", None))
-        self.sendHexRadio.setText(QCoreApplication.translate("MainWindow", u"HEX", None))
-        self.appendNewLineCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u6dfb\u52a0\u56de\u8f66\u6362\u884c", None))
-        self.autoSendCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u81ea\u52a8\u53d1\u9001", None))
-        self.msLabel.setText(QCoreApplication.translate("MainWindow", u"ms", None))
-        self.sendButton.setText(QCoreApplication.translate("MainWindow", u"\u53d1\n"
-"\u9001", None))
         self.refreshButton.setText(QCoreApplication.translate("MainWindow", u"\u5237\u65b0\u7aef\u53e3", None))
         self.portLabel.setText(QCoreApplication.translate("MainWindow", u"\u7aef\u53e3:", None))
 #if QT_CONFIG(tooltip)
@@ -389,13 +349,22 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(tooltip)
         self.portSpin.setToolTip(QCoreApplication.translate("MainWindow", u"\u76ee\u6807\u7aef\u53e3\u53f7", None))
 #endif // QT_CONFIG(tooltip)
+        self.openButton.setText(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u7aef\u53e3", None))
         self.settingsButton.setText(QCoreApplication.translate("MainWindow", u"\u66f4\u591a\u8bbe\u7f6e", None))
-        self.statusLabel.setText(QCoreApplication.translate("MainWindow", u"\u5df2\u65ad\u5f00", None))
-        self.separator1.setText(QCoreApplication.translate("MainWindow", u"|", None))
-        self.sendCountLabel.setText(QCoreApplication.translate("MainWindow", u"\u53d1\u9001: 0 \u5b57\u8282", None))
-        self.separator2.setText(QCoreApplication.translate("MainWindow", u"|", None))
-        self.receiveCountLabel.setText(QCoreApplication.translate("MainWindow", u"\u63a5\u6536: 0 \u5b57\u8282", None))
         self.togglePresetButton.setText(QCoreApplication.translate("MainWindow", u"\u6269\u5c55\u53d1\u9001", None))
+        self.receiveGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u63a5\u6536\u533a\u57df", None))
+        self.hexRadio.setText(QCoreApplication.translate("MainWindow", u"HEX", None))
+        self.asciiRadio.setText(QCoreApplication.translate("MainWindow", u"ASCII", None))
+        self.mixedRadio.setText(QCoreApplication.translate("MainWindow", u"HEX+ASCII", None))
+        self.autoScrollCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u81ea\u52a8\u6eda\u52a8", None))
+        self.clearReceiveButton.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u7a7a", None))
+        self.sendGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u53d1\u9001\u533a\u57df", None))
+        self.sendAsciiRadio.setText(QCoreApplication.translate("MainWindow", u"ASCII", None))
+        self.sendHexRadio.setText(QCoreApplication.translate("MainWindow", u"HEX", None))
+        self.appendNewLineCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u6dfb\u52a0\u56de\u8f66\u6362\u884c", None))
+        self.autoSendCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u81ea\u52a8\u53d1\u9001", None))
+        self.msLabel.setText(QCoreApplication.translate("MainWindow", u"ms", None))
+        self.sendButton.setText(QCoreApplication.translate("MainWindow", u"\u53d1\u9001", None))
         self.menuFile.setTitle(QCoreApplication.translate("MainWindow", u"\u6587\u4ef6", None))
         self.menuEdit.setTitle(QCoreApplication.translate("MainWindow", u"\u7f16\u8f91", None))
         self.menuTool.setTitle(QCoreApplication.translate("MainWindow", u"\u5de5\u5177", None))

@@ -33,6 +33,9 @@ class ConfigManager:
             'rtt_range_size': '',
             'rtt_chip_history': [],
             'rtt_frame_timeout': 50,
+            'main_splitter_sizes': [590, 92],
+            'top_splitter_sizes': [700, 320],
+            'preset_panel_visible': False,
         }
         self.config = self.default_config.copy()
         self._load_config()

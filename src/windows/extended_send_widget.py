@@ -1,6 +1,6 @@
 import os
 from PySide6.QtWidgets import (QWidget, QTableWidgetItem, QCheckBox, QPushButton, QSpinBox,
-                                QFileDialog, QMessageBox, QHeaderView, QMenu,
+                                QFileDialog, QMessageBox, QHeaderView, QMenu, QSizePolicy,
                                 QHBoxLayout, QLabel, QLineEdit, QDialog)
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QAction, QCursor, QColor, QFont, QFontMetrics
@@ -203,6 +203,7 @@ class ExtendedSendWidget(QWidget):
         
         # 设置表格属性
         self._setup_table()
+        self._adjust_control_button_widths()
         
         # 设置右键菜单
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -287,6 +288,21 @@ class ExtendedSendWidget(QWidget):
 - 勾选多条+未勾选循环：按序号依次发送，完成后停止
 - 勾选多条+勾选循环：按序号依次发送，循环不停"""
         QMessageBox.information(self, "扩展发送帮助", help_text)
+
+    def _adjust_control_button_widths(self):
+        """根据按钮文字宽度设置更贴合的底部控制区按钮宽度。"""
+        buttons = [
+            self.ui.addButton,
+            self.ui.deleteButton,
+            self.ui.moveUpButton,
+            self.ui.moveDownButton,
+            self.ui.startSendButton,
+        ]
+
+        for button in buttons:
+            text_width = button.fontMetrics().horizontalAdvance(button.text())
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            button.setMinimumWidth(text_width + 20)
     
     def _setup_connections(self):
         """设置信号连接"""

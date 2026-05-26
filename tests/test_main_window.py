@@ -1,8 +1,10 @@
 import pytest
+from unittest.mock import patch
 
 
 @pytest.fixture
-def main_window(qapp, qtbot, tmp_path):
+def main_window(qapp, qtbot, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     from src.windows.main_window import MainWindow
     win = MainWindow(instance_id=1)
     qtbot.addWidget(win)
@@ -66,6 +68,26 @@ class TestMainWindowActions:
         main_window._clear_send()
         assert main_window.ui.sendTextEdit.toPlainText() == ""
 
+    def test_toggle_preset_panel_updates_visibility_and_checks(self, main_window):
+        main_window._toggle_preset_panel(True)
+
+        assert main_window.ui.extendedSendContainer.isHidden() is False
+        assert main_window.ui.togglePresetButton.isChecked() is True
+        assert main_window.ui.togglePresetAction.isChecked() is True
+
+        main_window._toggle_preset_panel(False)
+
+        assert main_window.ui.extendedSendContainer.isHidden() is True
+        assert main_window.ui.togglePresetButton.isChecked() is False
+        assert main_window.ui.togglePresetAction.isChecked() is False
+
+    def test_splitter_move_saves_sizes_to_config(self, main_window):
+        sizes = [420, 280]
+        main_window.ui.topSplitter.setSizes(sizes)
+        main_window._on_top_splitter_moved(0, 0)
+
+        assert main_window.config_manager.get('top_splitter_sizes') == main_window.ui.topSplitter.sizes()
+
     def test_baudrate_stack_serial(self, main_window):
         main_window.ui.baudrateStack.setCurrentIndex(0)
         assert main_window.ui.baudrateStack.currentIndex() == 0
@@ -82,8 +104,9 @@ class TestMainWindowActions:
         assert main_window._display_mode == "MIXED"
 
     def test_error_message_shows_dialog(self, main_window, qtbot):
-        with qtbot.waitSignal(main_window.serial_manager.error_occurred, timeout=1000):
+        with patch("src.windows.main_window.QMessageBox.critical") as critical:
             main_window._on_error("test error")
+        critical.assert_called_once()
 
 
 class TestMainWindowDataDisplay:

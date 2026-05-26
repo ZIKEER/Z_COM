@@ -1,7 +1,7 @@
 import sys
 import os
 from datetime import datetime
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout
+from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QLabel
 from PySide6.QtCore import QTimer, QThread, Qt
 from PySide6.QtGui import QTextCursor, QIcon, QAction
 
@@ -73,11 +73,9 @@ class MainWindow(QMainWindow):
         
         # 初始化扩展发送管理器，注入统一的发送函数
         self.extended_send_manager = ExtendedSendManager(self._send_data_func)
-        
-        # 创建扩展发送面板
+
+        # 创建扩展发送面板并挂到顶部右侧容器
         self.extended_send_widget = ExtendedSendWidget(self.extended_send_manager)
-        
-        # 将扩展发送面板添加到容器中
         container_layout = QVBoxLayout(self.ui.extendedSendContainer)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.addWidget(self.extended_send_widget)
@@ -95,6 +93,7 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer = QTimer()
         self._save_debounce_timer.setSingleShot(True)
         self._save_debounce_timer.timeout.connect(self.config_manager.save)
+        self._preset_panel_last_width = 320
         
         # 初始化界面
         self._init_ui()
@@ -103,9 +102,6 @@ class MainWindow(QMainWindow):
     
     def _init_ui(self):
         """初始化界面"""
-        # 创建状态栏
-        self._create_status_bar()
-        
         # 设置默认显示模式
         self.ui.asciiRadio.setChecked(True)
         
@@ -120,21 +116,28 @@ class MainWindow(QMainWindow):
         mono_font = QFont("Consolas", 10)
         mono_font.setStyleHint(QFont.StyleHint.Monospace)
         self.ui.receiveTextEdit.setFont(mono_font)
+        self.ui.sendTextEdit.setFont(mono_font)
+        self.ui.sendTextEdit.setPlaceholderText("输入要发送的数据...")
+
+        self.ui.mainSplitter.setChildrenCollapsible(False)
+        self.ui.topSplitter.setChildrenCollapsible(False)
+        self.ui.mainSplitter.setStretchFactor(0, 7)
+        self.ui.mainSplitter.setStretchFactor(1, 1)
+        self.ui.topSplitter.setStretchFactor(0, 7)
+        self.ui.topSplitter.setStretchFactor(1, 0)
         
         # 设置接收区域右键菜单
         self.ui.receiveTextEdit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.ui.receiveTextEdit.customContextMenuRequested.connect(self._show_receive_context_menu)
         
         # 设置分割器初始比例
-        # 上部分（接收+扩展）和下部分（发送）的比例为5:1
-        self.ui.mainSplitter.setSizes([500, 100])
+        self.ui.mainSplitter.setSizes([590, 92])
+        self.ui.topSplitter.setSizes([720, 0])
         
-        # 接收区域和扩展发送区域的宽度比例为1.55:1
-        self.ui.topSplitter.setSizes([550, 340])
-        
-        # 设置发送区域中间部分的两行比例为1:4
-        self.ui.sendCenterLayout.setStretch(0, 1)  # 配置项行
-        self.ui.sendCenterLayout.setStretch(1, 4)  # 发送文本框行
+        # 发送区域只占较小高度，输入框仍保留主要空间。
+        self.ui.sendCenterLayout.setStretch(0, 0)
+        self.ui.sendCenterLayout.setStretch(1, 1)
+        self._create_status_bar()
     
     @property
     def _display_mode(self):
@@ -155,11 +158,21 @@ class MainWindow(QMainWindow):
         }[self.io_mode]
     
     def _create_status_bar(self):
-        """初始化状态栏（控件在 .ui 中定义，此处做初始化和移入状态栏）"""
-        # 从 centralwidget 移至状态栏
-        self.statusBar().addPermanentWidget(self.ui.statusBarToolbar, 1)
+        """初始化真正的状态栏。"""
         self.statusBar().setStyleSheet("QStatusBar::item{border:0}")
         self.statusBar().show()
+
+        self.ui.statusLabel = QLabel("已断开")
+        self.ui.sendCountLabel = QLabel("发送: 0 字节")
+        self.ui.receiveCountLabel = QLabel("接收: 0 字节")
+        separator1 = QLabel("|")
+        separator2 = QLabel("|")
+
+        self.statusBar().addPermanentWidget(self.ui.statusLabel)
+        self.statusBar().addPermanentWidget(separator1)
+        self.statusBar().addPermanentWidget(self.ui.sendCountLabel)
+        self.statusBar().addPermanentWidget(separator2)
+        self.statusBar().addPermanentWidget(self.ui.receiveCountLabel)
         
         # 波特率下拉选项（编译时无 items，此处添加）
         for b in ['9600', '19200', '38400', '57600', '115200', '230400', '460800', '921600']:
@@ -179,8 +192,10 @@ class MainWindow(QMainWindow):
         self.ui.settingsButton.clicked.connect(self._show_serial_settings)
         self.ui.baudrateCombo.currentTextChanged.connect(self._on_baudrate_changed)
         self.ui.togglePresetButton.clicked.connect(self._toggle_preset_panel)
+        self.ui.topSplitter.splitterMoved.connect(self._on_top_splitter_moved)
+        self.ui.mainSplitter.splitterMoved.connect(self._on_main_splitter_moved)
         
-        # 发送区域的打开串口按钮
+        # 顶部连接工具栏的打开串口按钮
         self.ui.openButton.clicked.connect(self._toggle_serial)
         
         # 数据发送
@@ -430,9 +445,9 @@ class MainWindow(QMainWindow):
                 self.io_mode = 'serial'
     
     _MODE_BUTTON_TEXT = {
-        'serial': '关闭\n端口', 'rtt': '关闭\nRTT', 'socket': '关闭\nSocket',
+        'serial': '关闭端口', 'rtt': '关闭RTT', 'socket': '关闭Socket',
     }
-    _MODE_OPEN_TEXT = '打开\n端口'
+    _MODE_OPEN_TEXT = '打开端口'
 
     def _on_connection_changed(self, connected):
         """连接状态改变"""
@@ -625,14 +640,41 @@ class MainWindow(QMainWindow):
     
     def _toggle_preset_panel(self, checked):
         """切换扩展发送面板显示（按钮）"""
-        self.ui.extendedSendContainer.setVisible(checked)
+        self._set_preset_panel_visible(checked)
         self.ui.togglePresetButton.setChecked(checked)
         self.ui.togglePresetAction.setChecked(checked)
+        self._save_config_item('preset_panel_visible')
     
     def _toggle_preset_panel_menu(self, checked):
         """切换扩展发送面板显示（菜单）"""
-        self.ui.extendedSendContainer.setVisible(checked)
+        self._set_preset_panel_visible(checked)
         self.ui.togglePresetButton.setChecked(checked)
+        self._save_config_item('preset_panel_visible')
+
+    def _set_preset_panel_visible(self, visible):
+        self.ui.extendedSendContainer.setVisible(visible)
+
+        total_width = max(self.ui.topSplitter.width(), sum(self.ui.topSplitter.sizes()), 720)
+        if visible:
+            panel_width = min(max(self._preset_panel_last_width, 280), max(total_width // 2, 280))
+            receive_width = max(total_width - panel_width, 420)
+            self.ui.topSplitter.setSizes([receive_width, panel_width])
+        else:
+            sizes = self.ui.topSplitter.sizes()
+            if len(sizes) >= 2 and sizes[1] > 0:
+                self._preset_panel_last_width = sizes[1]
+            self.ui.topSplitter.setSizes([max(total_width, 1), 0])
+
+    def _on_top_splitter_moved(self, _pos, _index):
+        sizes = self.ui.topSplitter.sizes()
+        if self.ui.extendedSendContainer.isVisible() and len(sizes) >= 2 and sizes[1] > 0:
+            self._preset_panel_last_width = sizes[1]
+        self.config_manager.set('top_splitter_sizes', sizes)
+        self._save_debounce_timer.start(500)
+
+    def _on_main_splitter_moved(self, _pos, _index):
+        self.config_manager.set('main_splitter_sizes', self.ui.mainSplitter.sizes())
+        self._save_debounce_timer.start(500)
     
     def _clear_receive(self):
         """清空接收区"""
@@ -708,6 +750,19 @@ class MainWindow(QMainWindow):
         # 加载自动发送间隔
         interval = self.config_manager.get('auto_send_interval', 1000)
         self.ui.intervalSpinBox.setValue(interval)
+
+        main_sizes = self.config_manager.get('main_splitter_sizes', [590, 92])
+        if isinstance(main_sizes, list) and len(main_sizes) == 2:
+            self.ui.mainSplitter.setSizes(main_sizes)
+
+        top_sizes = self.config_manager.get('top_splitter_sizes', [700, 320])
+        if isinstance(top_sizes, list) and len(top_sizes) == 2:
+            self._preset_panel_last_width = top_sizes[1]
+
+        preset_panel_visible = self.config_manager.get('preset_panel_visible', False)
+        self._set_preset_panel_visible(preset_panel_visible)
+        self.ui.togglePresetButton.setChecked(preset_panel_visible)
+        self.ui.togglePresetAction.setChecked(preset_panel_visible)
         
         # 加载 ANSI 颜色显示
         self.display_ansi = self.config_manager.get('display_ansi', False)
@@ -744,6 +799,9 @@ class MainWindow(QMainWindow):
         self.config_manager.set('auto_scroll', self.ui.autoScrollCheckBox.isChecked())
         self.config_manager.set('auto_send_interval', self.ui.intervalSpinBox.value())
         self.config_manager.set('display_ansi', self.display_ansi)
+        self.config_manager.set('main_splitter_sizes', self.ui.mainSplitter.sizes())
+        self.config_manager.set('top_splitter_sizes', self.ui.topSplitter.sizes())
+        self.config_manager.set('preset_panel_visible', self.ui.extendedSendContainer.isVisible())
         self.config_manager.save()
     
     def _save_config_item(self, item_key):
@@ -763,6 +821,8 @@ class MainWindow(QMainWindow):
             self.config_manager.set('auto_send_interval', self.ui.intervalSpinBox.value())
         elif item_key == 'display_ansi':
             self.config_manager.set('display_ansi', self.display_ansi)
+        elif item_key == 'preset_panel_visible':
+            self.config_manager.set('preset_panel_visible', self.ui.extendedSendContainer.isVisible())
         
         self._save_debounce_timer.start(500)
     
