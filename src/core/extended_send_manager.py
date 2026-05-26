@@ -3,6 +3,74 @@ import json
 from PySide6.QtCore import QObject, Signal, QTimer
 
 
+def decode_ascii_escapes(text):
+    """将 ASCII 文本中的常见转义序列转换为真实字符。"""
+    if text is None:
+        return ""
+
+    result = []
+    index = 0
+    escape_map = {
+        'r': '\r',
+        'n': '\n',
+        't': '\t',
+        '0': '\0',
+        '\\': '\\',
+    }
+
+    while index < len(text):
+        char = text[index]
+        if char != '\\':
+            result.append(char)
+            index += 1
+            continue
+
+        if index + 1 >= len(text):
+            result.append('\\')
+            break
+
+        next_char = text[index + 1]
+        if next_char in escape_map:
+            result.append(escape_map[next_char])
+            index += 2
+            continue
+
+        if next_char == 'x':
+            hex_part = text[index + 2:index + 4]
+            if len(hex_part) == 2 and all(c in '0123456789abcdefABCDEF' for c in hex_part):
+                result.append(chr(int(hex_part, 16)))
+                index += 4
+                continue
+
+        # 未识别的转义保留原样
+        result.append('\\')
+        index += 1
+
+    return ''.join(result)
+
+
+def encode_ascii_for_display(text):
+    """将控制字符转为可视化转义，便于在单行编辑框中显示。"""
+    if text is None:
+        return ""
+
+    result = []
+    for char in text:
+        if char == '\\':
+            result.append('\\\\')
+        elif char == '\r':
+            result.append('\\r')
+        elif char == '\n':
+            result.append('\\n')
+        elif char == '\t':
+            result.append('\\t')
+        elif char == '\0':
+            result.append('\\0')
+        else:
+            result.append(char)
+    return ''.join(result)
+
+
 class ExtendedSendManager(QObject):
     """扩展发送管理类，负责管理多条数据的发送"""
     
@@ -197,7 +265,7 @@ class ExtendedSendManager(QObject):
                 hex_str = data.replace(' ', '')
                 send_data = bytes.fromhex(hex_str)
             else:
-                send_data = data.encode('utf-8')
+                send_data = decode_ascii_escapes(data).encode('utf-8')
             
             # 调用注入的发送函数
             success = self.send_func(send_data)

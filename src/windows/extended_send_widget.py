@@ -1,13 +1,15 @@
 import os
-from PySide6.QtWidgets import (QWidget, QTableWidgetItem, QCheckBox, QPushButton, QSpinBox, 
+from PySide6.QtWidgets import (QWidget, QTableWidgetItem, QCheckBox, QPushButton, QSpinBox,
                                 QFileDialog, QMessageBox, QHeaderView, QMenu,
-                                QHBoxLayout, QLabel, QLineEdit)
+                                QHBoxLayout, QLabel, QLineEdit, QDialog)
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QAction, QFontMetrics, QCursor, QColor
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from ui.Ui_extended_send_widget import Ui_ExtendedSendWidget
+from src.core.extended_send_manager import encode_ascii_for_display, decode_ascii_escapes
+from src.windows.extended_send_editor_dialog import ExtendedSendEditorDialog
 
 
 class SendItemWidget(QWidget):
@@ -29,8 +31,10 @@ class SendItemWidget(QWidget):
         
         # 数据输入框
         self.data_edit = QLineEdit()
-        self.data_edit.setPlaceholderText("输入数据内容...")
-        self.data_edit.setText(data)
+        self.data_edit.setPlaceholderText(r"输入数据内容... ASCII 支持 \r \n \t \xNN")
+        self.data_edit.setToolTip("ASCII 支持转义序列，右键可打开高级编辑")
+        self.data_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.data_edit.customContextMenuRequested.connect(self._show_data_context_menu)
         self.data_edit.textChanged.connect(self._on_data_changed)
         layout.addWidget(self.data_edit, 1)
         
@@ -41,7 +45,8 @@ class SendItemWidget(QWidget):
         self.send_btn.clicked.connect(lambda: self.send_clicked.emit(self.item_id))
         self.send_btn.setMinimumWidth(40)
         layout.addWidget(self.send_btn)
-        
+
+        self.set_data(data)
         self._update_button_text()
     
     def _update_button_text(self):
@@ -58,7 +63,12 @@ class SendItemWidget(QWidget):
     def set_data(self, data):
         """设置数据"""
         self._data = data
-        self.data_edit.setText(data)
+        display_text = encode_ascii_for_display(data)
+        if self.data_edit.text() == display_text:
+            return
+        self.data_edit.blockSignals(True)
+        self.data_edit.setText(display_text)
+        self.data_edit.blockSignals(False)
     
     def set_comment(self, comment):
         """设置注释"""
@@ -67,16 +77,38 @@ class SendItemWidget(QWidget):
     
     def _on_data_changed(self, text):
         """数据内容改变"""
-        self._data = text
-        self.data_changed.emit(self.item_id, text)
-    
+        self._data = decode_ascii_escapes(text)
+        self.data_changed.emit(self.item_id, self._data)
+
+    def _show_data_context_menu(self, pos):
+        menu = self.data_edit.createStandardContextMenu()
+        menu.addSeparator()
+        advanced_edit_action = QAction("高级编辑", self)
+        advanced_edit_action.triggered.connect(self._open_advanced_editor)
+        menu.addAction(advanced_edit_action)
+        menu.exec_(self.data_edit.mapToGlobal(pos))
+
     def _show_context_menu(self, pos):
         """显示右键菜单"""
         menu = QMenu(self)
+        advanced_edit_action = QAction("高级编辑数据", self)
+        advanced_edit_action.triggered.connect(self._open_advanced_editor)
+        menu.addAction(advanced_edit_action)
+
+        menu.addSeparator()
         edit_action = QAction("编辑注释", self)
         edit_action.triggered.connect(self._edit_comment)
         menu.addAction(edit_action)
         menu.exec_(self.send_btn.mapToGlobal(pos))
+
+    def _open_advanced_editor(self):
+        dialog = ExtendedSendEditorDialog(self._data, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._data = dialog.get_text()
+        self.set_data(self._data)
+        self.data_changed.emit(self.item_id, self._data)
     
     def _edit_comment(self):
         """编辑注释"""

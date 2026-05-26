@@ -10,7 +10,7 @@
     },
     {
       "id": 2,
-      "data": "B",
+      "data": "B\n\t\t\n\n",
       "is_hex": false,
       "comment": "",
       "delay": 1000,

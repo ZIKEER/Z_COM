@@ -1,9 +1,15 @@
 import os
 import json
-from src.core.extended_send_manager import ExtendedSendManager
+from src.core.extended_send_manager import ExtendedSendManager, decode_ascii_escapes, encode_ascii_for_display
 
 
 class TestExtendedSendManager:
+    def test_decode_ascii_escapes(self):
+        assert decode_ascii_escapes(r"A\r\nB\t\x21\\") == "A\r\nB\t!\\"
+
+    def test_encode_ascii_for_display(self):
+        assert encode_ascii_for_display("A\r\nB\t\\") == r"A\r\nB\t\\"
+
     def test_add_item(self, extended_send_manager):
         mgr = extended_send_manager
         item = mgr.add_item("48656C6C6F", is_hex=True, comment="hello")
@@ -66,6 +72,24 @@ class TestExtendedSendManager:
 
         with qtbot.waitSignal(mgr.data_sent, timeout=1000):
             mgr.send_single(item["id"])
+
+    def test_send_single_ascii_escape_sequences(self, extended_send_manager, qtbot):
+        mgr = extended_send_manager
+        item = mgr.add_item(r"AT\r\nLOGIN\tOK\x21", is_hex=False)
+
+        with qtbot.waitSignal(mgr.data_sent, timeout=1000) as blocker:
+            mgr.send_single(item["id"])
+
+        assert blocker.args == [b"AT\r\nLOGIN\tOK!"]
+
+    def test_send_single_ascii_multiline_raw_text(self, extended_send_manager, qtbot):
+        mgr = extended_send_manager
+        item = mgr.add_item("line1\nline2\tend", is_hex=False)
+
+        with qtbot.waitSignal(mgr.data_sent, timeout=1000) as blocker:
+            mgr.send_single(item["id"])
+
+        assert blocker.args == [b"line1\nline2\tend"]
 
     def test_send_multiple(self, extended_send_manager, qtbot):
         mgr = extended_send_manager
