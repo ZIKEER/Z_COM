@@ -61,6 +61,16 @@ class TestSocketManager:
         assert mgr.settings["host"] == "192.168.1.1"
         assert mgr.settings["port"] == 1234
 
+    def test_update_frame_timeout_applies_to_running_reader(self, qapp):
+        from src.io.socket_manager import SocketManager
+        mgr = SocketManager()
+        mgr.reader_thread = MagicMock()
+
+        mgr.update_settings({"frame_timeout": 80})
+
+        assert mgr.settings["frame_timeout"] == 80
+        mgr.reader_thread.set_frame_timeout.assert_called_once_with(80)
+
     def test_tcp_client_connect_fail(self, qapp, qtbot):
         from src.io.socket_manager import SocketManager
         mgr = SocketManager()

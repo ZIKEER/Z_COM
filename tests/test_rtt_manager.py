@@ -42,6 +42,16 @@ class TestRttManager:
         assert mgr.settings["speed"] == 10000
         assert mgr.settings["chip"] == "nRF52840"
 
+    def test_update_frame_timeout_applies_to_running_reader(self, qapp):
+        from src.io.rtt_manager import RttManager
+        mgr = RttManager()
+        mgr.reader_thread = MagicMock()
+
+        mgr.update_settings({"frame_timeout": 80})
+
+        assert mgr.settings["frame_timeout"] == 80
+        mgr.reader_thread.set_frame_timeout.assert_called_once_with(80)
+
     def test_connect_with_pylink(self, qapp, qtbot):
         from src.io.rtt_manager import RttManager
         mgr = RttManager()

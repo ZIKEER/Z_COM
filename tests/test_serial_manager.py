@@ -35,6 +35,16 @@ class TestSerialManager:
         assert mgr.settings["baudrate"] == 9600
         assert mgr.settings["databits"] == 7
 
+    def test_update_frame_timeout_applies_to_running_reader(self, qapp):
+        from src.io.serial_manager import SerialManager
+        mgr = SerialManager()
+        mgr.reader_thread = MagicMock()
+
+        mgr.update_settings({"frame_timeout": 80})
+
+        assert mgr.settings["frame_timeout"] == 80
+        mgr.reader_thread.set_frame_timeout.assert_called_once_with(80)
+
     def test_connect_calls_serial_open(self, qapp, qtbot):
         from src.io.serial_manager import SerialManager
         mgr = SerialManager()

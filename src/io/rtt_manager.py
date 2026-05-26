@@ -115,6 +115,8 @@ class RttManager(IOTransport):
     def update_settings(self, settings):
         """更新 RTT 设置"""
         self.settings.update(settings)
+        if 'frame_timeout' in settings and self.reader_thread:
+            self.reader_thread.set_frame_timeout(settings['frame_timeout'])
 
     def connect(self, serial_no=None, chip=None, speed=None, reset_flag=None,
                 start_address=None, range_size=None):

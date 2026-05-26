@@ -16,12 +16,15 @@ class SocketReaderThread(QThread):
         super().__init__()
         self._sock = sock
         self._mode = mode
-        self._frame_timeout = frame_timeout / 1000.0
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._current_client = None
         # tcp_server: {fileno: (client_sock, (host, port))}
         self._clients = {}
+        self.set_frame_timeout(frame_timeout)
+
+    def set_frame_timeout(self, frame_timeout):
+        self._frame_timeout = max(frame_timeout, 1) / 1000.0
 
     @property
     def current_client(self):

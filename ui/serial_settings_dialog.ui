@@ -100,11 +100,11 @@
       <item>
        <layout class="QHBoxLayout" name="frameTimeoutLayout">
         <item>
-         <widget class="QLabel" name="frameTimeoutLabel">
-          <property name="text">
-           <string>拼包超时：</string>
-          </property>
-         </widget>
+          <widget class="QLabel" name="frameTimeoutLabel">
+           <property name="text">
+            <string>分包时间：</string>
+           </property>
+          </widget>
         </item>
         <item>
          <widget class="QSpinBox" name="frameTimeoutSpinBox">
@@ -138,14 +138,14 @@
        </layout>
       </item>
       <item>
-       <widget class="QLabel" name="frameTimeoutHint">
-        <property name="text">
-         <string>说明：拼包超时用于将同一帧数据合并显示，超时时间越长合并越多</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
+        <widget class="QLabel" name="frameTimeoutHint">
+         <property name="text">
+          <string>说明：该时间同时用于静默分包和连续流刷新，时间越长合并越多、刷新越慢</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
       </item>
       <item>
        <widget class="QCheckBox" name="ansiCheckBox">
