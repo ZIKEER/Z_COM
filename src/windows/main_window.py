@@ -38,7 +38,8 @@ def get_resource_path(relative_path):
 DISPLAY_TIMESTAMP_COLOR = "#00CED1"  # 接收区时间戳颜色
 DISPLAY_ARROW_COLOR = "#000000"  # 收发方向箭头颜色
 DISPLAY_DATA_COLOR = "#000000"  # 接收区数据文本颜色
-MAX_DISPLAY_LINES = 1000  # 接收区最多保留的文本块数量
+MAX_DISPLAY_LINES = 5000  # 接收区最多保留的文本块数量
+DISPLAY_PRUNE_LINES = 2500  # 达到上限后一次删除的最旧文本块数量
 MEMORY_RECOVER_INTERVAL_MS = 10000  # 内存回收检查周期，单位毫秒
 
 
@@ -128,7 +129,6 @@ class MainWindow(QMainWindow):
         mono_font.setStyleHint(QFont.StyleHint.Monospace)
         self.ui.receiveTextEdit.setFont(mono_font)
         self.ui.receiveTextEdit.setUndoRedoEnabled(False)
-        self.ui.receiveTextEdit.document().setMaximumBlockCount(MAX_DISPLAY_LINES)
         self.ui.sendTextEdit.setFont(mono_font)
         self.ui.sendTextEdit.setPlaceholderText("输入要发送的数据...")
 
@@ -554,15 +554,28 @@ class MainWindow(QMainWindow):
             self.ui.receiveTextEdit.setTextCursor(cursor)
         
         # 限制显示行数
+        self._prune_receive_document_if_needed()
         self._update_status_bar()
+
+    def _prune_receive_document_if_needed(self):
+        """达到显示上限时删除最旧的部分文本块。"""
+        doc = self.ui.receiveTextEdit.document()
+        if doc.blockCount() < MAX_DISPLAY_LINES:
+            return
+
+        prune_block = doc.findBlockByNumber(DISPLAY_PRUNE_LINES)
+        if not prune_block.isValid():
+            return
+
+        cursor = QTextCursor(doc)
+        cursor.setPosition(0)
+        cursor.setPosition(prune_block.position(), QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
 
     def _recover_memory_if_needed(self):
         """定期做动态回收"""
-
         self.logger.flush()
         self.extended_send_manager.flush()
-        self.ui.receiveTextEdit.document().setMaximumBlockCount(1)
-        self.ui.receiveTextEdit.document().setMaximumBlockCount(MAX_DISPLAY_LINES)
         gc.collect()
     
     def _on_data_received(self, data):

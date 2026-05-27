@@ -94,17 +94,17 @@ class AnsiParser:
                 styles['background'] = AnsiParser.FG_COLORS.get(p - 10)
             elif p == 38 and i + 2 < len(params):
                 if params[i + 1] == 5:
-                    i += 2
+                    i += 3
                 elif params[i + 1] == 2 and i + 4 < len(params):
                     r, g, b = params[i + 2], params[i + 3], params[i + 4]
                     styles['color'] = f'#{r:02X}{g:02X}{b:02X}'
-                    i += 4
+                    i += 5
             elif p == 48 and i + 2 < len(params):
                 if params[i + 1] == 5:
-                    i += 2
+                    i += 3
                 elif params[i + 1] == 2 and i + 4 < len(params):
                     r, g, b = params[i + 2], params[i + 3], params[i + 4]
                     styles['background'] = f'#{r:02X}{g:02X}{b:02X}'
-                    i += 4
+                    i += 5
             i += 1
         return styles if styles else {}
