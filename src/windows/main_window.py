@@ -116,6 +116,8 @@ class MainWindow(QMainWindow):
         mono_font = QFont("Consolas", 10)
         mono_font.setStyleHint(QFont.StyleHint.Monospace)
         self.ui.receiveTextEdit.setFont(mono_font)
+        self.ui.receiveTextEdit.setUndoRedoEnabled(False)
+        self.ui.receiveTextEdit.document().setMaximumBlockCount(MAX_DISPLAY_LINES)
         self.ui.sendTextEdit.setFont(mono_font)
         self.ui.sendTextEdit.setPlaceholderText("输入要发送的数据...")
 
@@ -539,12 +541,6 @@ class MainWindow(QMainWindow):
             self.ui.receiveTextEdit.setTextCursor(cursor)
         
         # 限制显示行数
-        doc = self.ui.receiveTextEdit.document()
-        if doc.blockCount() > MAX_DISPLAY_LINES:
-            cursor = QTextCursor(doc.findBlockByNumber(doc.blockCount() - MAX_DISPLAY_LINES // 2))
-            cursor.movePosition(QTextCursor.MoveOperation.Start, QTextCursor.MoveMode.KeepAnchor)
-            cursor.removeSelectedText()
-        
         self._update_status_bar()
     
     def _on_data_received(self, data):

@@ -138,6 +138,14 @@ class SocketReaderThread(QThread):
 
     def stop(self):
         self._stop_event.set()
+        with self._lock:
+            for fileno, (csock, addr) in list(self._clients.items()):
+                try:
+                    csock.close()
+                except Exception:
+                    pass
+            self._clients.clear()
+            self._current_client = None
         try:
             self._sock.close()
         except Exception:
