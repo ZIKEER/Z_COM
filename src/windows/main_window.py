@@ -1,5 +1,6 @@
 import sys
 import os
+import gc
 from datetime import datetime
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QLabel
 from PySide6.QtCore import QTimer, QThread, Qt
@@ -34,10 +35,11 @@ def get_resource_path(relative_path):
 
 
 # P5: 显示颜色常量
-DISPLAY_TIMESTAMP_COLOR = "#00CED1"
-DISPLAY_ARROW_COLOR = "#000000"
-DISPLAY_DATA_COLOR = "#000000"
-MAX_DISPLAY_LINES = 10000
+DISPLAY_TIMESTAMP_COLOR = "#00CED1"  # 接收区时间戳颜色
+DISPLAY_ARROW_COLOR = "#000000"  # 收发方向箭头颜色
+DISPLAY_DATA_COLOR = "#000000"  # 接收区数据文本颜色
+MAX_DISPLAY_LINES = 1000  # 接收区最多保留的文本块数量
+MEMORY_RECOVER_INTERVAL_MS = 10000  # 内存回收检查周期，单位毫秒
 
 
 class MainWindow(QMainWindow):
@@ -85,8 +87,17 @@ class MainWindow(QMainWindow):
         self.send_count = 0
         self.io_mode = 'serial'  # 'serial' | 'rtt' | 'socket'
         self.display_ansi = False  # ANSI 颜色解析开关
+        self._receive_batch_window_ms = self.serial_manager.settings.get('frame_timeout', 50)
+        self._pending_receive_data = bytearray()
         self.auto_send_timer = QTimer()
         self.auto_send_timer.timeout.connect(self._auto_send)
+        self._receive_flush_timer = QTimer()
+        self._receive_flush_timer.setSingleShot(True)
+        self._receive_flush_timer.setInterval(self._receive_batch_window_ms)
+        self._receive_flush_timer.timeout.connect(self._flush_pending_receive_data)
+        self._memory_recover_timer = QTimer()
+        self._memory_recover_timer.timeout.connect(self._recover_memory_if_needed)
+        self._memory_recover_timer.start(MEMORY_RECOVER_INTERVAL_MS)
         self._log_flush_timer = QTimer()
         self._log_flush_timer.timeout.connect(self.logger.flush)
         self._log_flush_timer.start(1000)
@@ -360,6 +371,8 @@ class MainWindow(QMainWindow):
         """通用设置改变"""
         if 'frame_timeout' in settings:
             timeout = settings['frame_timeout']
+            self._receive_batch_window_ms = max(int(timeout), 1)
+            self._receive_flush_timer.setInterval(self._receive_batch_window_ms)
             self.serial_manager.update_settings({'frame_timeout': timeout})
             self.rtt_manager.update_settings({'frame_timeout': timeout})
             self.socket_manager.update_settings({'frame_timeout': timeout})
@@ -542,11 +555,31 @@ class MainWindow(QMainWindow):
         
         # 限制显示行数
         self._update_status_bar()
+
+    def _recover_memory_if_needed(self):
+        """定期做动态回收"""
+
+        self.logger.flush()
+        self.extended_send_manager.flush()
+        self.ui.receiveTextEdit.document().setMaximumBlockCount(1)
+        self.ui.receiveTextEdit.document().setMaximumBlockCount(MAX_DISPLAY_LINES)
+        gc.collect()
     
     def _on_data_received(self, data):
         """接收数据处理"""
-        self._append_data_lines(data, '←', 'RECEIVE')
-    
+        if not data:
+            return
+        self._pending_receive_data.extend(data)
+        self._receive_flush_timer.start()
+
+    def _flush_pending_receive_data(self):
+        """清空待接收数据"""
+        if not self._pending_receive_data:
+            return
+        data = bytes(self._pending_receive_data)
+        self._pending_receive_data.clear()
+        self._append_data_lines(data, '\u2190', 'RECEIVE')
+
     def _format_colored_display(self, data, mode, timestamp, arrow, display_ansi=False):
         """格式化带颜色的显示文本"""
         hex_str = self.data_handler.bytes_to_hex(data)
@@ -674,10 +707,12 @@ class MainWindow(QMainWindow):
     
     def _clear_receive(self):
         """清空接收区"""
+        self._pending_receive_data.clear()
+        self._receive_flush_timer.stop()
         self.ui.receiveTextEdit.clear()
         self.receive_count = 0
         self._update_status_bar()
-    
+
     def _clear_send(self):
         """清空发送区"""
         self.ui.sendTextEdit.clear()
@@ -824,6 +859,8 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """关闭事件"""
+        self._receive_flush_timer.stop()
+        self._flush_pending_receive_data()
         self.logger.flush()
         self.extended_send_manager.flush()
         self._save_config()
