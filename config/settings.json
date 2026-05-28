@@ -5,7 +5,7 @@
   "stopbits": "1",
   "parity": "None",
   "flowcontrol": "None",
-  "display_mode": "ASCII",
+  "display_mode": "MIXED",
   "send_mode": "ASCII",
   "auto_scroll": true,
   "auto_send_interval": 1000,
@@ -22,8 +22,8 @@
     156
   ],
   "top_splitter_sizes": [
-    527,
-    350
+    882,
+    0
   ],
-  "preset_panel_visible": true
+  "preset_panel_visible": false
 }

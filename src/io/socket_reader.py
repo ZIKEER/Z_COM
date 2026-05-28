@@ -47,27 +47,34 @@ class SocketReaderThread(QThread):
             return False
 
     def send_to_all(self, data):
+        pending_events = []
         with self._lock:
             for fileno, (csock, addr) in list(self._clients.items()):
                 try:
                     csock.send(data)
                 except Exception:
-                    self._remove_client(fileno)
+                    evt = self._remove_client(fileno)
+                    if evt:
+                        pending_events.append(evt)
+        for event_type, addr in pending_events:
+            self.client_event.emit(event_type, addr)
 
     def _remove_client(self, fileno):
+        """移除客户端，返回 (event_type, addr) 或 None。调用方需持有锁。"""
         if fileno in self._clients:
             csock, addr = self._clients.pop(fileno)
             try:
                 csock.close()
             except Exception:
                 pass
-            self.client_event.emit('disconnected', addr)
             if self._current_client == addr:
                 # 切到下一个客户端
                 if self._clients:
                     self._current_client = next(iter(self._clients.values()))[1]
                 else:
                     self._current_client = None
+            return ('disconnected', addr)
+        return None
 
     def run(self):
         self._stop_event.clear()
@@ -98,6 +105,7 @@ class SocketReaderThread(QThread):
                     if client_list:
                         socks = [csock for _, (csock, _) in client_list]
                         rlist, _, _ = select.select(socks, [], [], poll_interval)
+                        pending_events = []
                         for csock in rlist:
                             fileno = csock.fileno()
                             addr = next((a for fn, (c, a) in client_list if fn == fileno), None)
@@ -109,10 +117,16 @@ class SocketReaderThread(QThread):
                                     self.data_received.emit(bytes(data))
                                 else:
                                     with self._lock:
-                                        self._remove_client(fileno)
+                                        evt = self._remove_client(fileno)
+                                    if evt:
+                                        pending_events.append(evt)
                             except Exception:
                                 with self._lock:
-                                    self._remove_client(fileno)
+                                    evt = self._remove_client(fileno)
+                                if evt:
+                                    pending_events.append(evt)
+                        for event_type, addr in pending_events:
+                            self.client_event.emit(event_type, addr)
                     else:
                         self.msleep(int(poll_interval * 1000))
 

@@ -88,6 +88,7 @@ class ExtendedSendManager(QObject):
         self.is_sending = False
         self.is_looping = False
         self.current_index = 0
+        self._sending_items = None  # 当前正在发送的快照列表
         self.send_timer = QTimer()
         self.send_timer.setSingleShot(True)
         self.send_timer.timeout.connect(self._on_send_timer_timeout)
@@ -201,55 +202,55 @@ class ExtendedSendManager(QObject):
         """发送多条数据"""
         if self.is_sending:
             return
-        
+
         self.is_sending = True
         self.is_looping = loop
         self.current_index = 0
+        self._sending_items = self.get_sorted_items()
         self.send_started.emit()
-        
-        sorted_items = self.get_sorted_items()
-        if not sorted_items:
+
+        if not self._sending_items:
             self.is_sending = False
+            self._sending_items = None
             self.send_finished.emit()
             return
-        
-        self._send_next_item(sorted_items)
+
+        self._send_next_item()
     
-    def _send_next_item(self, items):
+    def _send_next_item(self):
         """发送下一条数据"""
-        if not self.is_sending:
+        if not self.is_sending or not self._sending_items:
             return
-        
-        if self.current_index >= len(items):
+
+        if self.current_index >= len(self._sending_items):
             if self.is_looping:
                 self.current_index = 0
             else:
                 self.is_sending = False
+                self._sending_items = None
                 self.send_finished.emit()
                 return
-        
-        item = items[self.current_index]
+
+        item = self._sending_items[self.current_index]
         success = self._send_item(item)
-        
+
         if not success:
             self.is_sending = False
+            self._sending_items = None
             self.send_finished.emit()
             return
-        
-        self.send_progress.emit(item['id'], len(items))
-        
+
+        self.send_progress.emit(item['id'], len(self._sending_items))
+
         self.current_index += 1
-        
-        # 延时后发送下一条
-        if item['delay'] > 0:
-            self.send_timer.start(item['delay'])
-        else:
-            self._send_next_item(items)
-    
+
+        # 延时后发送下一条（delay=0 也用定时器避免递归栈溢出）
+        delay = max(item['delay'], 1)
+        self.send_timer.start(delay)
+
     def _on_send_timer_timeout(self):
         """发送延时定时器超时"""
-        sorted_items = self.get_sorted_items()
-        self._send_next_item(sorted_items)
+        self._send_next_item()
     
     def _send_item(self, item):
         """发送单条数据，返回是否成功"""
@@ -284,6 +285,7 @@ class ExtendedSendManager(QObject):
         """停止发送"""
         self.is_sending = False
         self.is_looping = False
+        self._sending_items = None
         self.send_timer.stop()
 
     def flush(self):

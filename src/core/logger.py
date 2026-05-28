@@ -1,4 +1,5 @@
 import os
+import threading
 
 
 class Logger:
@@ -12,6 +13,7 @@ class Logger:
         os.makedirs(self.log_dir, exist_ok=True)
         self.current_log_file = None
         self._buffer = []
+        self._lock = threading.Lock()
         self._update_log_file()
 
     def _update_log_file(self):
@@ -22,15 +24,18 @@ class Logger:
     def log(self, timestamp, direction, hex_str, ascii_str):
         arrow = "\u2190" if direction == "RECEIVE" else "\u2192"
         entry = f"[{timestamp}]\n {arrow} HEX: {hex_str}\n {arrow} ASCII: {ascii_str}\n"
-        self._buffer.append(entry)
+        with self._lock:
+            self._buffer.append(entry)
 
     def flush(self):
-        if not self._buffer:
-            return
+        with self._lock:
+            if not self._buffer:
+                return
+            data = ''.join(self._buffer)
+            self._buffer.clear()
         self._update_log_file()
         try:
             with open(self.current_log_file, 'a', encoding='utf-8') as f:
-                f.write(''.join(self._buffer))
+                f.write(data)
         except Exception as e:
             print(f"\u65e5\u5fd7\u5199\u5165\u5931\u8d25: {e}")
-        self._buffer.clear()

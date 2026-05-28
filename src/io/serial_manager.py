@@ -70,15 +70,19 @@ class SerialManager(IOTransport):
                 }
                 self.serial.parity = parity_map.get(self.settings['parity'], serial.PARITY_NONE)
                 self.serial.open()
+
+                try:
+                    frame_timeout = self.settings.get('frame_timeout', 50)
+                    self.reader_thread = SerialReaderThread(self.serial, frame_timeout)
+                    self.reader_thread.data_received.connect(self.data_received)
+                    self.reader_thread.error_occurred.connect(self._on_thread_error)
+                    self.reader_thread.finished.connect(self._on_thread_finished)
+                    self.reader_thread.start()
+                except Exception:
+                    self.serial.close()
+                    raise
+
                 self.is_connected = True
-
-                frame_timeout = self.settings.get('frame_timeout', 50)
-                self.reader_thread = SerialReaderThread(self.serial, frame_timeout)
-                self.reader_thread.data_received.connect(self.data_received)
-                self.reader_thread.error_occurred.connect(self._on_thread_error)
-                self.reader_thread.finished.connect(self._on_thread_finished)
-                self.reader_thread.start()
-
                 self.connection_changed.emit(True)
                 return True
             except Exception as e:

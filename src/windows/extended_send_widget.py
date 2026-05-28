@@ -563,7 +563,7 @@ class ExtendedSendWidget(QWidget):
         """循环发送单条的内部方法"""
         if not self.manager.is_sending:
             return
-        
+
         success = self.manager._send_item(self._loop_single_item)
         if not success:
             self.manager.is_sending = False
@@ -571,13 +571,9 @@ class ExtendedSendWidget(QWidget):
             self._update_send_button_state()
             self.manager.send_finished.emit()
             return
-        
-        # 获取延时
-        delay = self._loop_single_item.get('delay', 1000)
-        if delay > 0:
-            QTimer.singleShot(delay, self._send_loop_single)
-        else:
-            QTimer.singleShot(10, self._send_loop_single)
+
+        delay = max(self._loop_single_item.get('delay', 1000), 1)
+        QTimer.singleShot(delay, self._send_loop_single)
     
     def _get_first_ordered_item(self):
         """获取序号最小的条目（序号>0）"""

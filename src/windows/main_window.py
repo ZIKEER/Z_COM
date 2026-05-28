@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.setSingleShot(True)
         self._save_debounce_timer.timeout.connect(self.config_manager.save)
         self._preset_panel_last_width = 320
+        self._append_count = 0
         
         # 初始化界面
         self._init_ui()
@@ -429,20 +430,23 @@ class MainWindow(QMainWindow):
             if self.ui.portCombo.currentIndex() < 0:
                 QMessageBox.warning(self, '警告', '请先选择端口')
                 return
-            
+
             port = self.ui.portCombo.currentData()
-            
+            prev_mode = self.io_mode
+
             if port and port.startswith('SOCKET:'):
                 host = self.ui.ipCombo.currentText().strip()
                 port_val = self.ui.portSpin.value()
                 protocol = 'TCP' if 'TCP' in port else 'UDP'
                 role = 'Server' if 'Server' in port else 'Client'
-                if self.socket_manager.connect(host, port_val, protocol, role):
-                    self.io_mode = 'socket'
+                self.io_mode = 'socket'
+                if not self.socket_manager.connect(host, port_val, protocol, role):
+                    self.io_mode = prev_mode
             elif port and port.startswith('JLINK:'):
                 sn = port.replace('JLINK:SN=', '')
                 rtt_settings = self.config_manager.get_rtt_settings()
                 chip = rtt_settings.get('chip', '')
+                self.io_mode = 'rtt'
                 success = self.rtt_manager.connect(
                     serial_no=sn,
                     chip=chip,
@@ -452,12 +456,13 @@ class MainWindow(QMainWindow):
                     range_size=rtt_settings.get('range_size') or None
                 )
                 if success:
-                    self.io_mode = 'rtt'
                     if chip:
                         self.config_manager.add_rtt_chip_history(chip)
+                else:
+                    self.io_mode = prev_mode
             else:
-                self.serial_manager.connect(port)
                 self.io_mode = 'serial'
+                self.serial_manager.connect(port)
     
     _MODE_BUTTON_TEXT = {
         'serial': '关闭端口', 'rtt': '关闭RTT', 'socket': '关闭Socket',
@@ -482,7 +487,6 @@ class MainWindow(QMainWindow):
             self.ui.refreshButton.setEnabled(False)
             self.ui.portCombo.setEnabled(False)
         else:
-            self.io_mode = 'serial'
             self.ui.openButton.setText(self._MODE_OPEN_TEXT)
             self.ui.openButton.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
             self.ui.statusLabel.setText('已断开')
@@ -534,27 +538,19 @@ class MainWindow(QMainWindow):
         ascii_str = self.data_handler.bytes_to_ascii(data)
         self.logger.log(timestamp, log_type, hex_str, ascii_str)
         
-        if mode == 'ASCII' and b'\n' in data:
-            pieces = []
-            for part in data.split(b'\n'):
-                line_data = part.rstrip(b'\r')
-                if not line_data:
-                    continue
-                html = self._format_colored_display(line_data, mode, timestamp, display_arrow, self.display_ansi)
-                pieces.append(html)
-            if pieces:
-                self.ui.receiveTextEdit.append('<br>'.join(pieces))
-        else:
-            html = self._format_colored_display(data, mode, timestamp, display_arrow, self.display_ansi)
-            self.ui.receiveTextEdit.append(html)
+        html = self._format_colored_display(data, mode, timestamp, display_arrow, self.display_ansi)
+        self.ui.receiveTextEdit.append(html)
         
         if self.ui.autoScrollCheckBox.isChecked():
             cursor = self.ui.receiveTextEdit.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self.ui.receiveTextEdit.setTextCursor(cursor)
         
-        # 限制显示行数
-        self._prune_receive_document_if_needed()
+        # 限制显示行数（每 50 次追加检查一次，减少 blockCount 开销）
+        self._append_count += 1
+        if self._append_count >= 50:
+            self._append_count = 0
+            self._prune_receive_document_if_needed()
         self._update_status_bar()
 
     def _prune_receive_document_if_needed(self):
@@ -590,8 +586,34 @@ class MainWindow(QMainWindow):
         if not self._pending_receive_data:
             return
         data = bytes(self._pending_receive_data)
-        self._pending_receive_data.clear()
-        self._append_data_lines(data, '\u2190', 'RECEIVE')
+        # 检查末尾是否有不完整的 ANSI 转义序列（ESC [ ... 无终止符）
+        tail = self._find_incomplete_ansi_tail(data)
+        if tail > 0:
+            self._pending_receive_data = bytearray(data[-tail:])
+            data = data[:-tail]
+        else:
+            self._pending_receive_data.clear()
+        if data:
+            self._append_data_lines(data, '\u2190', 'RECEIVE')
+
+    @staticmethod
+    def _find_incomplete_ansi_tail(data):
+        """检测末尾不完整 ANSI 转义序列的长度，0 表示完整。"""
+        i = len(data) - 1
+        while i >= 0:
+            if data[i] == 0x1B:
+                break
+            if 0x40 <= data[i] <= 0x7E:
+                return 0
+            i -= 1
+        if i < 0:
+            return 0
+        if i + 1 < len(data) and data[i + 1] == 0x5B:
+            for j in range(i + 2, len(data)):
+                if 0x40 <= data[j] <= 0x7E:
+                    return 0
+            return len(data) - i
+        return 0
 
     def _format_colored_display(self, data, mode, timestamp, arrow, display_ansi=False):
         """格式化带颜色的显示文本"""
@@ -663,6 +685,10 @@ class MainWindow(QMainWindow):
         
         if self._io.send_data(bytes_data, is_hex=False):
             self._append_data_lines(bytes_data, '→', 'SEND')
+        else:
+            ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            err_html = f'<span style="color:red;">[{ts}] 发送失败</span>'
+            self.ui.receiveTextEdit.append(err_html)
     
     def _on_extended_data_sent(self, data):
         """扩展发送数据后显示"""
