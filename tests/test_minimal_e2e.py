@@ -17,18 +17,18 @@ class TestSimpleE2E:
         port = _find_free_port()
         server = SocketManager()
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
         assert server.is_connected is True
-        server.disconnect()
+        server.close_connection()
         assert server.is_connected is False
 
     def test_connect_disconnect_2(self, qapp, qtbot):
         port = _find_free_port()
         server = SocketManager()
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
         assert server.is_connected is True
-        server.disconnect()
+        server.close_connection()
         assert server.is_connected is False
 
     def test_send_receive(self, qapp, qtbot):
@@ -41,11 +41,11 @@ class TestSimpleE2E:
         server.data_received.connect(on_data)
 
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client = SocketManager()
         with qtbot.waitSignal(client.connection_changed, timeout=3000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         client.send_data(b"hello")
 
@@ -55,5 +55,5 @@ class TestSimpleE2E:
         assert len(received) > 0
         assert b"hello" in received[0]
 
-        client.disconnect()
-        server.disconnect()
+        client.close_connection()
+        server.close_connection()

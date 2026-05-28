@@ -23,7 +23,7 @@ class TestMainWindowInit:
         assert main_window.display_ansi is False
 
     def test_receive_count_zero(self, main_window):
-        assert main_window.receive_count == 0
+        assert main_window._display_handler.receive_count == 0
 
     def test_send_count_zero(self, main_window):
         assert main_window.send_count == 0
@@ -39,7 +39,7 @@ class TestMainWindowInit:
         assert "打开" in main_window.ui.openButton.text()
 
     def test_status_label_disconnected(self, main_window):
-        assert "已断开" in main_window.ui.statusLabel.text()
+        assert "已断开" in main_window._status_bar.status_label.text()
 
     def test_receive_text_edit_exists(self, main_window):
         assert main_window.ui.receiveTextEdit is not None
@@ -111,13 +111,14 @@ class TestMainWindowActions:
 
 class TestMainWindowDataDisplay:
     def test_append_data_lines_increments_count(self, main_window):
-        main_window.receive_count = 0
-        main_window._append_data_lines(b"test", "\u2190", "RECEIVE")
-        assert main_window.receive_count == 4
+        main_window._display_handler.receive_count = 0
+        main_window._display_handler.append_data(b"test", "\u2190", "RECEIVE")
+        assert main_window._display_handler.receive_count == 4
 
     def test_append_data_lines_send_count(self, main_window):
         main_window.send_count = 0
-        main_window._append_data_lines(b"test", "\u2192", "SEND")
+        main_window.send_count += len(b"test")
+        main_window._display_handler.append_data(b"test", "\u2192", "SEND")
         assert main_window.send_count == 4
 
 

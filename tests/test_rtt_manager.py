@@ -66,7 +66,7 @@ class TestRttManager:
             mock_thread_cls.return_value = mock_thread
 
             with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
-                result = mgr.connect(serial_no=12345, chip="nRF52840", speed=4000,
+                result = mgr.open_connection(serial_no=12345, chip="nRF52840", speed=4000,
                                      reset_flag=False, start_address=None, range_size=None)
 
         assert result is True
@@ -83,7 +83,7 @@ class TestRttManager:
 
         with patch.object(mgr, "_import_pylink", return_value=mock_pylink):
             with qtbot.waitSignal(mgr.error_occurred, timeout=2000):
-                result = mgr.connect(serial_no=99999, chip="nRF52840", speed=4000,
+                result = mgr.open_connection(serial_no=99999, chip="nRF52840", speed=4000,
                                      reset_flag=False, start_address=None, range_size=None)
 
         assert result is False
@@ -98,7 +98,7 @@ class TestRttManager:
         mgr.is_connected = True
 
         with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
-            result = mgr.disconnect()
+            result = mgr.close_connection()
 
         assert result is True
         assert mgr.is_connected is False

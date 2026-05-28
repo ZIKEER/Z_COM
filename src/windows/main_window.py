@@ -2,17 +2,18 @@ import sys
 import os
 import gc
 from datetime import datetime
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout
 from PySide6.QtCore import QTimer, QThread, Qt
 from PySide6.QtGui import QTextCursor, QIcon, QAction
 
-# 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from ui.Ui_main_window import Ui_MainWindow
 from src.windows.serial_settings_dialog import SerialSettingsDialog
 from src.core.config_manager import ConfigManager
 from src.core.extended_send_manager import ExtendedSendManager
 from src.windows.extended_send_widget import ExtendedSendWidget
+from src.windows.status_bar_controller import StatusBarController
+from src.windows.receive_display_handler import ReceiveDisplayHandler
 from src.io.rtt_manager import RttManager
 from src.core.ansi_parser import AnsiParser, escape_html
 from src.core.data_handler import DataHandler
@@ -22,80 +23,71 @@ from src.io.serial_manager import SerialManager
 from src.io.socket_manager import SocketManager
 from src.build_info import BUILD_TIME
 
+MEMORY_RECOVER_INTERVAL_MS = 10000
+
 
 def get_resource_path(relative_path):
-    """获取资源文件的绝对路径，支持打包后的路径"""
     if getattr(sys, 'frozen', False):
-        # 打包后的路径
         base_path = sys._MEIPASS
     else:
-        # 开发环境路径
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
 
-# P5: 显示颜色常量
-DISPLAY_TIMESTAMP_COLOR = "#00CED1"  # 接收区时间戳颜色
-DISPLAY_ARROW_COLOR = "#000000"  # 收发方向箭头颜色
-DISPLAY_DATA_COLOR = "#000000"  # 接收区数据文本颜色
-MAX_DISPLAY_LINES = 5000  # 接收区最多保留的文本块数量
-DISPLAY_PRUNE_LINES = 2500  # 达到上限后一次删除的最旧文本块数量
-MEMORY_RECOVER_INTERVAL_MS = 10000  # 内存回收检查周期，单位毫秒
-
-
 class MainWindow(QMainWindow):
-    """主窗口类"""
-    
+
     def __init__(self, instance_id=1):
         super().__init__()
         self.instance_id = instance_id
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        
-        # 设置窗口标题（包含版本号和实例号）
+
         title = f"{APP_NAME} V{VERSION}"
         if instance_id > 1:
             title += f" [实例{instance_id}]"
         self.setWindowTitle(title)
-        
-        # 设置窗口图标
+
         icon_path = get_resource_path(ICON_PATH)
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        
-        # 初始化配置管理
+
+        # 配置
         self.config_manager = ConfigManager(instance_id=instance_id)
-        
-        # 初始化管理器
+
+        # IO 管理器
         self.serial_manager = SerialManager()
         self.rtt_manager = RttManager()
         self.socket_manager = SocketManager()
         self.data_handler = DataHandler()
         self.ansi_parser = AnsiParser()
         self.logger = Logger(instance_id=instance_id)
-        
-        # 初始化扩展发送管理器，注入统一的发送函数
-        self.extended_send_manager = ExtendedSendManager(self._send_data_func)
 
-        # 创建扩展发送面板并挂到顶部右侧容器
+        # 扩展发送（注入配置目录以支持多实例隔离）
+        self.extended_send_manager = ExtendedSendManager(
+            self._send_data_func, config_dir=self.config_manager.config_dir,
+        )
         self.extended_send_widget = ExtendedSendWidget(self.extended_send_manager)
         container_layout = QVBoxLayout(self.ui.extendedSendContainer)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.addWidget(self.extended_send_widget)
-        
-        # 状态变量
-        self.receive_count = 0
+
+        # 接收区显示处理器
         self.send_count = 0
-        self.io_mode = 'serial'  # 'serial' | 'rtt' | 'socket'
-        self.display_ansi = False  # ANSI 颜色解析开关
-        self._receive_batch_window_ms = self.serial_manager.settings.get('frame_timeout', 50)
-        self._pending_receive_data = bytearray()
+        self.io_mode = 'serial'
+        self.display_ansi = False
+        self._display_handler = ReceiveDisplayHandler(
+            self.ui.receiveTextEdit, self.data_handler, self.ansi_parser,
+            self.logger,
+            get_display_mode=lambda: self._display_mode,
+            get_display_ansi=lambda: self.display_ansi,
+        )
+
+        # 状态栏
+        self._status_bar = StatusBarController(self.statusBar())
+
+        # 定时器
         self.auto_send_timer = QTimer()
         self.auto_send_timer.timeout.connect(self._auto_send)
-        self._receive_flush_timer = QTimer()
-        self._receive_flush_timer.setSingleShot(True)
-        self._receive_flush_timer.setInterval(self._receive_batch_window_ms)
-        self._receive_flush_timer.timeout.connect(self._flush_pending_receive_data)
         self._memory_recover_timer = QTimer()
         self._memory_recover_timer.timeout.connect(self._recover_memory_if_needed)
         self._memory_recover_timer.start(MEMORY_RECOVER_INTERVAL_MS)
@@ -106,56 +98,15 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.setSingleShot(True)
         self._save_debounce_timer.timeout.connect(self.config_manager.save)
         self._preset_panel_last_width = 320
-        self._append_count = 0
-        
-        # 初始化界面
+
         self._init_ui()
         self._setup_connections()
         self._load_config()
-    
-    def _init_ui(self):
-        """初始化界面"""
-        # 设置默认显示模式
-        self.ui.asciiRadio.setChecked(True)
-        
-        # 设置默认发送格式
-        self.ui.sendAsciiRadio.setChecked(True)
-        
-        # 设置打开串口按钮初始颜色（红色-未连接）
-        self.ui.openButton.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
-        
-        # 设置接收区域使用等宽字体
-        from PySide6.QtGui import QFont
-        mono_font = QFont("Consolas", 10)
-        mono_font.setStyleHint(QFont.StyleHint.Monospace)
-        self.ui.receiveTextEdit.setFont(mono_font)
-        self.ui.receiveTextEdit.setUndoRedoEnabled(False)
-        self.ui.sendTextEdit.setFont(mono_font)
-        self.ui.sendTextEdit.setPlaceholderText("输入要发送的数据...")
 
-        self.ui.mainSplitter.setChildrenCollapsible(False)
-        self.ui.topSplitter.setChildrenCollapsible(False)
-        self.ui.mainSplitter.setStretchFactor(0, 7)
-        self.ui.mainSplitter.setStretchFactor(1, 1)
-        self.ui.topSplitter.setStretchFactor(0, 7)
-        self.ui.topSplitter.setStretchFactor(1, 0)
-        
-        # 设置接收区域右键菜单
-        self.ui.receiveTextEdit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.ui.receiveTextEdit.customContextMenuRequested.connect(self._show_receive_context_menu)
-        
-        # 设置分割器初始比例
-        self.ui.mainSplitter.setSizes([590, 92])
-        self.ui.topSplitter.setSizes([720, 0])
-        
-        # 发送区域只占较小高度，输入框仍保留主要空间。
-        self.ui.sendCenterLayout.setStretch(0, 0)
-        self.ui.sendCenterLayout.setStretch(1, 1)
-        self._create_status_bar()
-    
+    # ── 属性 ──
+
     @property
     def _display_mode(self):
-        """获取当前显示模式"""
         if self.ui.hexRadio.isChecked():
             return 'HEX'
         elif self.ui.asciiRadio.isChecked():
@@ -164,64 +115,51 @@ class MainWindow(QMainWindow):
 
     @property
     def _io(self):
-        """获取当前活动的 IO 管理器（串口/RTT/Socket）"""
         return {
             'serial': self.serial_manager,
             'rtt': self.rtt_manager,
             'socket': self.socket_manager,
         }[self.io_mode]
-    
-    def _create_status_bar(self):
-        """初始化真正的状态栏。"""
-        self.statusBar().setStyleSheet("QStatusBar::item{border:0}")
-        self.statusBar().show()
 
-        self.ui.statusLabel = QLabel("已断开")
-        self.ui.sendCountLabel = QLabel("发送: 0 字节")
-        self.ui.receiveCountLabel = QLabel("接收: 0 字节")
-        separator1 = QLabel("|")
-        separator2 = QLabel("|")
+    # ── UI 初始化 ──
 
-        self.statusBar().addPermanentWidget(self.ui.statusLabel)
-        self.statusBar().addPermanentWidget(separator1)
-        self.statusBar().addPermanentWidget(self.ui.sendCountLabel)
-        self.statusBar().addPermanentWidget(separator2)
-        self.statusBar().addPermanentWidget(self.ui.receiveCountLabel)
-        
-        # 波特率下拉选项（编译时无 items，此处添加）
+    def _init_ui(self):
+        self.ui.asciiRadio.setChecked(True)
+        self.ui.sendAsciiRadio.setChecked(True)
+        self.ui.openButton.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
+        self.ui.sendTextEdit.setFont(self.ui.receiveTextEdit.font())
+        self.ui.sendTextEdit.setPlaceholderText("输入要发送的数据...")
+
+        self.ui.mainSplitter.setChildrenCollapsible(False)
+        self.ui.topSplitter.setChildrenCollapsible(False)
+        self.ui.mainSplitter.setStretchFactor(0, 7)
+        self.ui.mainSplitter.setStretchFactor(1, 1)
+        self.ui.topSplitter.setStretchFactor(0, 7)
+        self.ui.topSplitter.setStretchFactor(1, 0)
+        self.ui.mainSplitter.setSizes([590, 92])
+        self.ui.topSplitter.setSizes([720, 0])
+        self.ui.sendCenterLayout.setStretch(0, 0)
+        self.ui.sendCenterLayout.setStretch(1, 1)
+
+        self._display_handler.setup_context_menu(self._toggle_ansi_display)
+
         for b in ['9600', '19200', '38400', '57600', '115200', '230400', '460800', '921600']:
             self.ui.baudrateCombo.addItem(b)
         self.ui.baudrateCombo.setCurrentText('115200')
-        
-        # 初始断开状态
-        self.ui.statusLabel.setStyleSheet("color: red;")
-        
-        # 限制自动发送最小间隔
         self.ui.intervalSpinBox.setMinimum(10)
-    
+
     def _setup_connections(self):
-        """设置信号连接"""
-        # 状态栏按钮连接
         self.ui.refreshButton.clicked.connect(self._refresh_ports)
         self.ui.settingsButton.clicked.connect(self._show_serial_settings)
         self.ui.baudrateCombo.currentTextChanged.connect(self._on_baudrate_changed)
         self.ui.togglePresetButton.clicked.connect(self._toggle_preset_panel)
         self.ui.topSplitter.splitterMoved.connect(self._on_top_splitter_moved)
         self.ui.mainSplitter.splitterMoved.connect(self._on_main_splitter_moved)
-        
-        # 顶部连接工具栏的打开串口按钮
         self.ui.openButton.clicked.connect(self._toggle_serial)
-        
-        # 数据发送
         self.ui.sendButton.clicked.connect(self._send_data)
-        
-        # 接收区域控制
         self.ui.clearReceiveButton.clicked.connect(self._clear_receive)
-        
-        # 自动发送
         self.ui.autoSendCheckBox.stateChanged.connect(self._toggle_auto_send)
-        
-        # 配置改变时立即保存
+
         self.ui.portCombo.currentIndexChanged.connect(lambda: self._save_config_item('port'))
         self.ui.portCombo.currentIndexChanged.connect(self._on_port_changed)
         self.ui.baudrateCombo.currentTextChanged.connect(lambda: self._save_config_item('baudrate'))
@@ -232,81 +170,56 @@ class MainWindow(QMainWindow):
         self.ui.sendHexRadio.toggled.connect(lambda: self._save_config_item('send_mode'))
         self.ui.autoScrollCheckBox.stateChanged.connect(lambda: self._save_config_item('auto_scroll'))
         self.ui.intervalSpinBox.valueChanged.connect(lambda: self._save_config_item('auto_send_interval'))
-        
-        # 串口管理器信号
-        self.serial_manager.data_received.connect(self._on_data_received)
-        self.serial_manager.connection_changed.connect(self._on_connection_changed)
-        self.serial_manager.error_occurred.connect(self._on_error)
-        
-        # RTT 管理器信号
-        self.rtt_manager.data_received.connect(self._on_data_received)
-        self.rtt_manager.connection_changed.connect(self._on_connection_changed)
-        self.rtt_manager.error_occurred.connect(self._on_error)
-        
-        # Socket 管理器信号
-        self.socket_manager.data_received.connect(self._on_data_received)
-        self.socket_manager.connection_changed.connect(self._on_connection_changed)
-        self.socket_manager.error_occurred.connect(self._on_error)
+
+        for mgr in (self.serial_manager, self.rtt_manager, self.socket_manager):
+            mgr.data_received.connect(self._display_handler.on_data_received)
+            mgr.connection_changed.connect(self._on_connection_changed)
+            mgr.error_occurred.connect(self._on_error)
         self.socket_manager.client_event.connect(self._on_socket_client_event)
-        
-        # 扩展发送管理器信号
+
         self.extended_send_manager.data_sent.connect(self._on_extended_data_sent)
-        
-        # 菜单动作
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionClearReceive.triggered.connect(self._clear_receive)
         self.ui.actionClearSend.triggered.connect(self._clear_send)
         self.ui.actionSettings.triggered.connect(self._show_serial_settings)
         self.ui.togglePresetAction.triggered.connect(self._toggle_preset_panel_menu)
         self.ui.actionAbout.triggered.connect(self._show_about)
-    
+
+    # ── 端口刷新 ──
+
     def _refresh_ports(self, block_signals=False):
-        """刷新串口列表"""
-        # 保存当前选中的端口
         current_port = self.ui.portCombo.currentData() if not block_signals else None
-        
-        # 临时阻塞信号防止触发保存
         if block_signals:
             self.ui.portCombo.blockSignals(True)
-        
+
         self.ui.portCombo.clear()
-        ports = self.serial_manager.get_available_ports()
-        for port, description in ports:
-            # 移除描述中可能包含的括号中的端口号，避免重复显示
-            # 例如: "USB-SERIAL CH340 (COM3)" -> "USB-SERIAL CH340"
+        for port, description in self.serial_manager.get_available_ports():
             full_description = description
             if '(' in description and ')' in description:
                 description = description.split('(')[0].strip()
             display_text = f"{port}-{description}"
             self.ui.portCombo.addItem(display_text, port)
-            # 设置 tooltip 显示完整信息
             index = self.ui.portCombo.count() - 1
             self.ui.portCombo.setItemData(index, f"{port}-{full_description}", Qt.ToolTipRole)
-        
-        # 恢复信号
+
         if block_signals:
             self.ui.portCombo.blockSignals(False)
-        
-        # 在后台线程扫描 J-Link 设备，避免阻塞 UI
-        from PySide6.QtCore import QThread, Signal as QSignal
-        
+
+        from PySide6.QtCore import Signal as QSignal
+
         class JLinkScanThread(QThread):
-            """J-Link 扫描线程"""
             scan_finished = QSignal(list)
-            
-            def __init__(self, rtt_manager):
+            def __init__(self, rtt_mgr):
                 super().__init__()
-                self.rtt_manager = rtt_manager
-            
+                self.rtt_mgr = rtt_mgr
             def run(self):
-                devices = self.rtt_manager.get_available_devices()
-                self.scan_finished.emit(devices)
-        
+                devs = self.rtt_mgr.get_available_devices()
+                self.scan_finished.emit(devs)
+
         self._jlink_scan_thread = JLinkScanThread(self.rtt_manager)
         self._jlink_scan_thread.scan_finished.connect(self._on_jlink_scan_finished)
         self._jlink_scan_thread.start()
 
-        # 添加 Socket 模式固定条目（置于末尾）
         socket_modes = [
             ('SOCKET:TCP:Server', 'TCP Server'),
             ('SOCKET:TCP:Client', 'TCP Client'),
@@ -318,10 +231,8 @@ class MainWindow(QMainWindow):
                 self.ui.portCombo.addItem(display_text, key)
                 idx = self.ui.portCombo.count() - 1
                 self.ui.portCombo.setItemData(idx, display_text, Qt.ToolTipRole)
-    
+
     def _on_jlink_scan_finished(self, jlink_devices):
-        """J-Link 扫描完成回调（插入到 Socket 条目之前）"""
-        # 找到第一个 Socket 条目的位置
         insert_pos = self.ui.portCombo.count()
         for i in range(self.ui.portCombo.count()):
             d = self.ui.portCombo.itemData(i)
@@ -335,76 +246,64 @@ class MainWindow(QMainWindow):
                 self.ui.portCombo.insertItem(insert_pos, display_text, jlink_key)
                 self.ui.portCombo.setItemData(insert_pos, display_text, Qt.ToolTipRole)
                 insert_pos += 1
-    
+
+    # ── 设置对话框 ──
+
     def _show_serial_settings(self):
-        """显示更多设置对话框"""
         rtt_settings = self.config_manager.get_rtt_settings()
         dialog = SerialSettingsDialog(
-            self.serial_manager.settings,
-            rtt_settings,
-            self.display_ansi,
-            self
+            self.serial_manager.settings, rtt_settings, self.display_ansi, self,
         )
         dialog.settings_changed.connect(self._on_serial_settings_changed)
         dialog.rtt_settings_changed.connect(self._on_rtt_settings_changed)
         dialog.common_settings_changed.connect(self._on_common_settings_changed)
         dialog.exec()
-    
+
     def _on_serial_settings_changed(self, settings):
-        """串口设置改变"""
         self.serial_manager.update_settings(settings)
-        # 如果串口已连接，立即生效
         if self.serial_manager.is_connected:
             self.serial_manager.reconfigure()
-    
+
     def _on_rtt_settings_changed(self, settings):
-        """RTT 设置改变"""
         self.rtt_manager.update_settings(settings)
-        # 保存 RTT 配置
         self.config_manager.set('rtt_chip', settings.get('chip', 'nRF52840_xxAA'))
         self.config_manager.set('rtt_speed', settings.get('speed', 4000))
         self.config_manager.set('rtt_reset', settings.get('reset', True))
         self.config_manager.set('rtt_start_address', settings.get('start_address', ''))
         self.config_manager.set('rtt_range_size', settings.get('range_size', ''))
         self.config_manager.save()
-    
+
     def _on_common_settings_changed(self, settings):
-        """通用设置改变"""
         if 'frame_timeout' in settings:
             timeout = settings['frame_timeout']
-            self._receive_batch_window_ms = max(int(timeout), 1)
-            self._receive_flush_timer.setInterval(self._receive_batch_window_ms)
-            self.serial_manager.update_settings({'frame_timeout': timeout})
-            self.rtt_manager.update_settings({'frame_timeout': timeout})
-            self.socket_manager.update_settings({'frame_timeout': timeout})
+            self._display_handler.set_batch_window(timeout)
+            for mgr in (self.serial_manager, self.rtt_manager, self.socket_manager):
+                mgr.update_settings({'frame_timeout': timeout})
             self.config_manager.set('rtt_frame_timeout', timeout)
         if 'display_ansi' in settings:
             self.display_ansi = settings['display_ansi']
             self.config_manager.set('display_ansi', self.display_ansi)
         self.config_manager.save()
-    
+
+    # ── 连接控制 ──
+
     def _on_baudrate_changed(self, text):
-        """波特率改变"""
         try:
             baudrate = int(text)
             self.serial_manager.settings['baudrate'] = baudrate
-            # 如果串口已连接，立即生效
             if self.serial_manager.is_connected:
                 self.serial_manager.reconfigure()
         except ValueError:
             pass
-    
+
     def _on_port_changed(self, index):
-        """端口选择改变"""
         if index < 0:
             return
         port_data = self.ui.portCombo.currentData()
         if not port_data:
             return
-
         if port_data.startswith('SOCKET:'):
             self.ui.baudrateStack.setCurrentIndex(1)
-
             is_server = 'Server' in port_data
             if is_server:
                 self.ui.ipCombo.clear()
@@ -421,16 +320,14 @@ class MainWindow(QMainWindow):
         else:
             self.ui.baudrateStack.setCurrentIndex(0)
             self.ui.baudrateCombo.setEnabled(True)
-    
+
     def _toggle_serial(self):
-        """切换端口连接状态"""
         if self._io.is_connected:
-            self._io.disconnect()
+            self._io.close_connection()
         else:
             if self.ui.portCombo.currentIndex() < 0:
                 QMessageBox.warning(self, '警告', '请先选择端口')
                 return
-
             port = self.ui.portCombo.currentData()
             prev_mode = self.io_mode
 
@@ -440,20 +337,19 @@ class MainWindow(QMainWindow):
                 protocol = 'TCP' if 'TCP' in port else 'UDP'
                 role = 'Server' if 'Server' in port else 'Client'
                 self.io_mode = 'socket'
-                if not self.socket_manager.connect(host, port_val, protocol, role):
+                if not self.socket_manager.open_connection(host, port_val, protocol, role):
                     self.io_mode = prev_mode
             elif port and port.startswith('JLINK:'):
                 sn = port.replace('JLINK:SN=', '')
                 rtt_settings = self.config_manager.get_rtt_settings()
                 chip = rtt_settings.get('chip', '')
                 self.io_mode = 'rtt'
-                success = self.rtt_manager.connect(
-                    serial_no=sn,
-                    chip=chip,
+                success = self.rtt_manager.open_connection(
+                    serial_no=sn, chip=chip,
                     speed=rtt_settings.get('speed'),
                     reset_flag=rtt_settings.get('reset'),
                     start_address=rtt_settings.get('start_address') or None,
-                    range_size=rtt_settings.get('range_size') or None
+                    range_size=rtt_settings.get('range_size') or None,
                 )
                 if success:
                     if chip:
@@ -462,266 +358,111 @@ class MainWindow(QMainWindow):
                     self.io_mode = prev_mode
             else:
                 self.io_mode = 'serial'
-                self.serial_manager.connect(port)
-    
+                self.serial_manager.open_connection(port)
+
     _MODE_BUTTON_TEXT = {
         'serial': '关闭端口', 'rtt': '关闭RTT', 'socket': '关闭Socket',
     }
     _MODE_OPEN_TEXT = '打开端口'
+    _ERROR_TITLES = {
+        'serial': '串口错误', 'rtt': 'RTT 错误', 'socket': 'Socket 错误',
+    }
 
     def _on_connection_changed(self, connected):
-        """连接状态改变"""
         if connected:
             text = self._MODE_BUTTON_TEXT.get(self.io_mode, self._MODE_OPEN_TEXT)
             self.ui.openButton.setText(text)
             self.ui.openButton.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
-
             if self.io_mode == 'socket' and self.socket_manager.current_client:
                 client = self.socket_manager.current_client
-                self.ui.statusLabel.setText(
-                    f'已连接 {client[0]}:{client[1]} ({self.ui.portCombo.currentText()})'
-                )
+                self._status_bar.set_connected(f'已连接 {client[0]}:{client[1]} ({self.ui.portCombo.currentText()})')
             else:
-                self.ui.statusLabel.setText(f'已连接 {self.ui.portCombo.currentText()}')
-            self.ui.statusLabel.setStyleSheet("color: green;")
+                self._status_bar.set_connected(f'已连接 {self.ui.portCombo.currentText()}')
             self.ui.refreshButton.setEnabled(False)
             self.ui.portCombo.setEnabled(False)
         else:
             self.ui.openButton.setText(self._MODE_OPEN_TEXT)
             self.ui.openButton.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
-            self.ui.statusLabel.setText('已断开')
-            self.ui.statusLabel.setStyleSheet("color: red;")
+            self._status_bar.set_disconnected()
             self.ui.refreshButton.setEnabled(True)
             self.ui.portCombo.setEnabled(True)
-    
-    _ERROR_TITLES = {
-        'serial': '串口错误', 'rtt': 'RTT 错误', 'socket': 'Socket 错误',
-    }
 
     def _on_error(self, error_msg):
-        """错误处理"""
         title = self._ERROR_TITLES.get(self.io_mode, '错误')
         QMessageBox.critical(self, '错误', f'{title}：{error_msg}')
-    
+
     def _on_socket_client_event(self, event_type, addr):
-        """Socket 客户端连接/断开事件"""
         host, port = addr
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        msg = f'[{ts}] \u2190 Client {event_type}: {host}:{port}'
-        self.ui.receiveTextEdit.append(
-            f'<span style="color:#888;">{escape_html(msg)}</span>'
-        )
-
+        msg = f'[{ts}] ← Client {event_type}: {host}:{port}'
+        self.ui.receiveTextEdit.append(f'<span style="color:#888;">{escape_html(msg)}</span>')
         if self._io.is_connected and self.io_mode == 'socket' and event_type == 'connected':
-            self.ui.statusLabel.setText(
-                f'已连接 {host}:{port} ({self.ui.portCombo.currentText()})'
-            )
+            self._status_bar.set_connected(f'已连接 {host}:{port} ({self.ui.portCombo.currentText()})')
 
-    def _append_data_lines(self, data, arrow, log_type):
-        """按行拆分并显示数据"""
-        mode = self._display_mode
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        
-        if self.io_mode == 'socket' and self.socket_manager.current_client:
-            client = self.socket_manager.current_client
-            client_prefix = f'[{client[0]}:{client[1]}] '
-            display_arrow = client_prefix + arrow
-        else:
-            display_arrow = arrow
+    # ── 发送 ──
 
-        if log_type == 'RECEIVE':
-            self.receive_count += len(data)
-        else:
-            self.send_count += len(data)
-        
-        hex_str = self.data_handler.bytes_to_hex(data)
-        ascii_str = self.data_handler.bytes_to_ascii(data)
-        self.logger.log(timestamp, log_type, hex_str, ascii_str)
-        
-        html = self._format_colored_display(data, mode, timestamp, display_arrow, self.display_ansi)
-        self.ui.receiveTextEdit.append(html)
-        
-        if self.ui.autoScrollCheckBox.isChecked():
-            cursor = self.ui.receiveTextEdit.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            self.ui.receiveTextEdit.setTextCursor(cursor)
-        
-        # 限制显示行数（每 50 次追加检查一次，减少 blockCount 开销）
-        self._append_count += 1
-        if self._append_count >= 50:
-            self._append_count = 0
-            self._prune_receive_document_if_needed()
-        self._update_status_bar()
-
-    def _prune_receive_document_if_needed(self):
-        """达到显示上限时删除最旧的部分文本块。"""
-        doc = self.ui.receiveTextEdit.document()
-        if doc.blockCount() < MAX_DISPLAY_LINES:
-            return
-
-        prune_block = doc.findBlockByNumber(DISPLAY_PRUNE_LINES)
-        if not prune_block.isValid():
-            return
-
-        cursor = QTextCursor(doc)
-        cursor.setPosition(0)
-        cursor.setPosition(prune_block.position(), QTextCursor.MoveMode.KeepAnchor)
-        cursor.removeSelectedText()
-
-    def _recover_memory_if_needed(self):
-        """定期做动态回收"""
-        self.logger.flush()
-        self.extended_send_manager.flush()
-        gc.collect()
-    
-    def _on_data_received(self, data):
-        """接收数据处理"""
-        if not data:
-            return
-        self._pending_receive_data.extend(data)
-        self._receive_flush_timer.start()
-
-    def _flush_pending_receive_data(self):
-        """清空待接收数据"""
-        if not self._pending_receive_data:
-            return
-        data = bytes(self._pending_receive_data)
-        # 检查末尾是否有不完整的 ANSI 转义序列（ESC [ ... 无终止符）
-        tail = self._find_incomplete_ansi_tail(data)
-        if tail > 0:
-            self._pending_receive_data = bytearray(data[-tail:])
-            data = data[:-tail]
-        else:
-            self._pending_receive_data.clear()
-        if data:
-            self._append_data_lines(data, '\u2190', 'RECEIVE')
-
-    @staticmethod
-    def _find_incomplete_ansi_tail(data):
-        """检测末尾不完整 ANSI 转义序列的长度，0 表示完整。"""
-        i = len(data) - 1
-        while i >= 0:
-            if data[i] == 0x1B:
-                break
-            if 0x40 <= data[i] <= 0x7E:
-                return 0
-            i -= 1
-        if i < 0:
-            return 0
-        if i + 1 < len(data) and data[i + 1] == 0x5B:
-            for j in range(i + 2, len(data)):
-                if 0x40 <= data[j] <= 0x7E:
-                    return 0
-            return len(data) - i
-        return 0
-
-    def _format_colored_display(self, data, mode, timestamp, arrow, display_ansi=False):
-        """格式化带颜色的显示文本"""
-        hex_str = self.data_handler.bytes_to_hex(data)
-        
-        if display_ansi and mode != 'HEX':
-            ascii_colored = self.ansi_parser.bytes_to_html(data, self.data_handler.bytes_to_ascii)
-        else:
-            ascii_colored = escape_html(self.data_handler.bytes_to_ascii(data))
-        
-        ts_tag = f'<span style="color:{DISPLAY_TIMESTAMP_COLOR};">[{timestamp}]</span>'
-        arrow_tag = f'<span style="color:{DISPLAY_ARROW_COLOR}; font-weight:bold;">{arrow}</span>'
-        data_tag = lambda text: f'<span style="color:{DISPLAY_DATA_COLOR};">{text}</span>'
-        
-        lines = []
-        if mode in ('HEX', 'MIXED'):
-            lines.append(f'{arrow_tag} HEX: {data_tag(hex_str)}')
-        if mode in ('ASCII', 'MIXED'):
-            lines.append(f'{arrow_tag} ASCII: {data_tag(ascii_colored)}')
-        
-        if mode == 'MIXED':
-            return f'{ts_tag}<br>' + '<br>'.join(lines)
-        return f'{ts_tag} ' + lines[0]
-    
-    def _show_receive_context_menu(self, pos):
-        """显示接收区域的右键菜单"""
-        menu = self.ui.receiveTextEdit.createStandardContextMenu()
-        menu.addSeparator()
-        ansi_action = QAction("ANSI颜色显示", self)
-        ansi_action.setCheckable(True)
-        ansi_action.setChecked(self.display_ansi)
-        ansi_action.toggled.connect(self._toggle_ansi_display)
-        menu.addAction(ansi_action)
-        menu.exec_(self.ui.receiveTextEdit.mapToGlobal(pos))
-    
-    def _toggle_ansi_display(self, checked):
-        """切换 ANSI 颜色显示"""
-        self.display_ansi = checked
-        self._save_config_item('display_ansi')
-    
     def _send_data_func(self, data):
-        """统一发送接口，供扩展发送管理器调用"""
         return self._io.send_data(data, is_hex=False)
-    
+
     def _send_data(self):
-        """发送数据"""
         if not self._io.is_connected:
             QMessageBox.warning(self, '警告', '请先打开端口')
             return
-        
         data = self.ui.sendTextEdit.toPlainText()
         if not data:
             return
-        
+
         is_hex = self.ui.sendHexRadio.isChecked()
-        
         if is_hex and not self.data_handler.validate_hex_input(data):
             QMessageBox.warning(self, '警告', 'HEX 格式输入错误')
             return
-        
+
         if is_hex:
             hex_str = data.replace(' ', '').replace('\n', '')
             bytes_data = bytes.fromhex(hex_str)
         else:
             bytes_data = data.encode('utf-8')
-        
+
         if self.ui.appendNewLineCheckBox.isChecked():
             bytes_data += b'\r\n'
-        
+
         if self._io.send_data(bytes_data, is_hex=False):
-            self._append_data_lines(bytes_data, '→', 'SEND')
+            self.send_count += len(bytes_data)
+            self._display_handler.append_data(bytes_data, '→', 'SEND')
+            self._update_status_counts()
         else:
             ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            err_html = f'<span style="color:red;">[{ts}] 发送失败</span>'
-            self.ui.receiveTextEdit.append(err_html)
-    
+            self.ui.receiveTextEdit.append(f'<span style="color:red;">[{ts}] 发送失败</span>')
+
     def _on_extended_data_sent(self, data):
-        """扩展发送数据后显示"""
-        self._append_data_lines(data, '→', 'SEND')
-    
+        self.send_count += len(data)
+        self._display_handler.append_data(data, '→', 'SEND')
+        self._update_status_counts()
+
     def _auto_send(self):
-        """自动发送"""
         self._send_data()
-    
+
     def _toggle_auto_send(self, state):
-        """切换自动发送"""
         if state:
-            interval = self.ui.intervalSpinBox.value()
-            self.auto_send_timer.start(interval)
+            self.auto_send_timer.start(self.ui.intervalSpinBox.value())
         else:
             self.auto_send_timer.stop()
-    
+
+    # ── 预设面板 ──
+
     def _toggle_preset_panel(self, checked):
-        """切换扩展发送面板显示（按钮）"""
         self._set_preset_panel_visible(checked)
         self.ui.togglePresetButton.setChecked(checked)
         self.ui.togglePresetAction.setChecked(checked)
         self._save_config_item('preset_panel_visible')
-    
+
     def _toggle_preset_panel_menu(self, checked):
-        """切换扩展发送面板显示（菜单）"""
         self._set_preset_panel_visible(checked)
         self.ui.togglePresetButton.setChecked(checked)
         self._save_config_item('preset_panel_visible')
 
     def _set_preset_panel_visible(self, visible):
         self.ui.extendedSendContainer.setVisible(visible)
-
         total_width = max(self.ui.topSplitter.width(), sum(self.ui.topSplitter.sizes()), 720)
         if visible:
             panel_width = min(max(self._preset_panel_last_width, 280), max(total_width // 2, 280))
@@ -743,21 +484,20 @@ class MainWindow(QMainWindow):
     def _on_main_splitter_moved(self, _pos, _index):
         self.config_manager.set('main_splitter_sizes', self.ui.mainSplitter.sizes())
         self._save_debounce_timer.start(500)
-    
+
+    # ── 清空 ──
+
     def _clear_receive(self):
-        """清空接收区"""
-        self._pending_receive_data.clear()
-        self._receive_flush_timer.stop()
-        self.ui.receiveTextEdit.clear()
-        self.receive_count = 0
-        self._update_status_bar()
+        self._display_handler.clear()
+        self.send_count = 0
+        self._update_status_counts()
 
     def _clear_send(self):
-        """清空发送区"""
         self.ui.sendTextEdit.clear()
-    
+
+    # ── 关于 ──
+
     def _show_about(self):
-        """显示关于对话框"""
         about_text = f"""{APP_NAME} V{VERSION}
 
 基于 PySide6 开发的多协议调试工具
@@ -777,27 +517,33 @@ class MainWindow(QMainWindow):
 
 编译时间：{BUILD_TIME}"""
         QMessageBox.about(self, '关于', about_text)
-    
-    def _update_status_bar(self):
-        """更新状态栏"""
-        self.ui.sendCountLabel.setText(f'发送: {self.send_count} 字节')
-        self.ui.receiveCountLabel.setText(f'接收: {self.receive_count} 字节')
-    
+
+    # ── ANSI 切换 ──
+
+    def _toggle_ansi_display(self, checked):
+        self.display_ansi = checked
+        self._save_config_item('display_ansi')
+
+    # ── 状态栏 ──
+
+    def _update_status_counts(self):
+        self._status_bar.update_counts(self.send_count, self._display_handler.receive_count)
+
+    # ── 内存回收 ──
+
+    def _recover_memory_if_needed(self):
+        self.logger.flush()
+        self.extended_send_manager.flush()
+        gc.collect()
+
+    # ── 配置 ──
+
     def _load_config(self):
-        """加载配置"""
-        # 加载串口设置
-        serial_settings = self.config_manager.get_serial_settings()
-        self.serial_manager.update_settings(serial_settings)
-        
-        # 加载 RTT 设置
-        rtt_settings = self.config_manager.get_rtt_settings()
-        self.rtt_manager.update_settings(rtt_settings)
-        
-        # 加载波特率
-        baudrate = self.config_manager.get('baudrate', '115200')
-        self.ui.baudrateCombo.setCurrentText(baudrate)
-        
-        # 加载显示模式
+        self.serial_manager.update_settings(self.config_manager.get_serial_settings())
+        self.rtt_manager.update_settings(self.config_manager.get_rtt_settings())
+
+        self.ui.baudrateCombo.setCurrentText(self.config_manager.get('baudrate', '115200'))
+
         display_mode = self.config_manager.get('display_mode', 'ASCII')
         if display_mode == 'HEX':
             self.ui.hexRadio.setChecked(True)
@@ -805,21 +551,15 @@ class MainWindow(QMainWindow):
             self.ui.mixedRadio.setChecked(True)
         else:
             self.ui.asciiRadio.setChecked(True)
-        
-        # 加载发送模式
+
         send_mode = self.config_manager.get('send_mode', 'ASCII')
         if send_mode == 'HEX':
             self.ui.sendHexRadio.setChecked(True)
         else:
             self.ui.sendAsciiRadio.setChecked(True)
-        
-        # 加载自动滚动
-        auto_scroll = self.config_manager.get('auto_scroll', True)
-        self.ui.autoScrollCheckBox.setChecked(auto_scroll)
-        
-        # 加载自动发送间隔
-        interval = self.config_manager.get('auto_send_interval', 1000)
-        self.ui.intervalSpinBox.setValue(interval)
+
+        self.ui.autoScrollCheckBox.setChecked(self.config_manager.get('auto_scroll', True))
+        self.ui.intervalSpinBox.setValue(self.config_manager.get('auto_send_interval', 1000))
 
         main_sizes = self.config_manager.get('main_splitter_sizes', [590, 92])
         if isinstance(main_sizes, list) and len(main_sizes) == 2:
@@ -833,36 +573,28 @@ class MainWindow(QMainWindow):
         self._set_preset_panel_visible(preset_panel_visible)
         self.ui.togglePresetButton.setChecked(preset_panel_visible)
         self.ui.togglePresetAction.setChecked(preset_panel_visible)
-        
-        # 加载 ANSI 颜色显示
+
         self.display_ansi = self.config_manager.get('display_ansi', False)
-        
-        # 刷新端口列表并加载保存的端口（阻塞信号防止覆盖配置）
+
         saved_port = self.config_manager.get('port', '')
         self._refresh_ports(block_signals=True)
-        
-        # 加载串口
         if saved_port:
             index = self.ui.portCombo.findData(saved_port)
             if index >= 0:
                 self.ui.portCombo.setCurrentIndex(index)
-    
+
     def _save_display_mode(self):
-        """保存显示模式到配置"""
         self.config_manager.set('display_mode', self._display_mode)
-    
+
     def _save_send_mode(self):
-        """保存发送模式到配置"""
         if self.ui.sendHexRadio.isChecked():
             self.config_manager.set('send_mode', 'HEX')
         else:
             self.config_manager.set('send_mode', 'ASCII')
-    
+
     def _save_config(self):
-        """保存配置"""
         if self.ui.portCombo.currentIndex() >= 0:
             self.config_manager.set('port', self.ui.portCombo.currentData())
-        
         self.config_manager.set('baudrate', self.ui.baudrateCombo.currentText())
         self._save_display_mode()
         self._save_send_mode()
@@ -873,9 +605,8 @@ class MainWindow(QMainWindow):
         self.config_manager.set('top_splitter_sizes', self.ui.topSplitter.sizes())
         self.config_manager.set('preset_panel_visible', self.ui.extendedSendContainer.isVisible())
         self.config_manager.save()
-    
+
     def _save_config_item(self, item_key):
-        """保存单个配置项（防抖）"""
         if item_key == 'port':
             if self.ui.portCombo.currentIndex() >= 0:
                 self.config_manager.set('port', self.ui.portCombo.currentData())
@@ -893,17 +624,14 @@ class MainWindow(QMainWindow):
             self.config_manager.set('display_ansi', self.display_ansi)
         elif item_key == 'preset_panel_visible':
             self.config_manager.set('preset_panel_visible', self.ui.extendedSendContainer.isVisible())
-        
         self._save_debounce_timer.start(500)
-    
+
     def closeEvent(self, event):
-        """关闭事件"""
-        self._receive_flush_timer.stop()
-        self._flush_pending_receive_data()
+        self._display_handler.flush()
         self.logger.flush()
         self.extended_send_manager.flush()
         self._save_config()
         if self._io.is_connected:
-            self._io.disconnect()
+            self._io.close_connection()
         self.extended_send_manager.stop_sending()
         event.accept()

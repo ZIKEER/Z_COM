@@ -42,7 +42,7 @@ class SocketManagerUnit:
                 sig = mgr.error_occurred
 
             with qtbot.waitSignal(sig, timeout=3000):
-                result = mgr.connect(host, port, protocol, role)
+                result = mgr.open_connection(host, port, protocol, role)
 
         return mgr, result
 
@@ -75,7 +75,7 @@ class TestSocketManager:
         from src.io.socket_manager import SocketManager
         mgr = SocketManager()
         with qtbot.waitSignal(mgr.error_occurred, timeout=5000):
-            result = mgr.connect("127.0.0.1", 1, "TCP", "Client")
+            result = mgr.open_connection("127.0.0.1", 1, "TCP", "Client")
         assert result is False
         assert mgr.is_connected is False
 
@@ -83,19 +83,19 @@ class TestSocketManager:
         mgr, result = SocketManagerUnit.create(qapp, qtbot, "127.0.0.1", 0, "UDP", "Server")
         assert result is True
         assert mgr.mode == "udp_server"
-        mgr.disconnect()
+        mgr.close_connection()
 
     def test_udp_client(self, qapp, qtbot):
         mgr, result = SocketManagerUnit.create(qapp, qtbot, "127.0.0.1", 9999, "UDP", "Client")
         assert result is True
         assert mgr.mode == "udp_client"
-        mgr.disconnect()
+        mgr.close_connection()
 
     def test_disconnect_cleanup(self, qapp, qtbot):
         mgr, _ = SocketManagerUnit.create(qapp, qtbot, "127.0.0.1", 0, "UDP", "Server")
 
         with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
-            mgr.disconnect()
+            mgr.close_connection()
         assert mgr.is_connected is False
         assert mgr.mode is None
 
@@ -116,7 +116,7 @@ class TestSocketLoopback:
         port = _find_free_port()
 
         with qtbot.waitSignal(server.connection_changed, timeout=2000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_sock.settimeout(3)
@@ -131,7 +131,7 @@ class TestSocketLoopback:
         assert received[0] == b"ping"
 
         client_sock.close()
-        server.disconnect()
+        server.close_connection()
 
     def test_udp_echo(self, qapp, qtbot):
         from src.io.socket_manager import SocketManager
@@ -146,7 +146,7 @@ class TestSocketLoopback:
         port = _find_free_port()
 
         with qtbot.waitSignal(server.connection_changed, timeout=2000):
-            server.connect("127.0.0.1", port, "UDP", "Server")
+            server.open_connection("127.0.0.1", port, "UDP", "Server")
 
         client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_sock.sendto(b"hello", ("127.0.0.1", port))
@@ -158,7 +158,7 @@ class TestSocketLoopback:
         assert received[0] == b"hello"
 
         client_sock.close()
-        server.disconnect()
+        server.close_connection()
 
     def test_tcp_client_send(self, qapp, qtbot):
         from src.io.socket_manager import SocketManager
@@ -178,7 +178,7 @@ class TestSocketLoopback:
         client.data_received.connect(on_data)
 
         with qtbot.waitSignal(client.connection_changed, timeout=2000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         conn, addr = server_sock.accept()
         conn.send(b"world")
@@ -190,7 +190,7 @@ class TestSocketLoopback:
         assert received[0] == b"world"
 
         conn.close()
-        client.disconnect()
+        client.close_connection()
         server_sock.close()
 
 

@@ -47,17 +47,15 @@ class TestSerialManager:
 
     def test_connect_calls_serial_open(self, qapp, qtbot):
         from src.io.serial_manager import SerialManager
+        from src.io.io_transport import IOTransport
         mgr = SerialManager()
 
         mock_ser = MagicMock()
         mgr.serial = mock_ser
 
-        with patch.object(sm_mod, "SerialReaderThread") as mock_thread_cls:
-            mock_thread = MagicMock()
-            mock_thread_cls.return_value = mock_thread
-
+        with patch.object(IOTransport, "_connect_reader_thread"):
             with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
-                result = mgr.connect("COM3")
+                result = mgr.open_connection("COM3")
 
         assert result is True
         assert mgr.is_connected is True
@@ -72,7 +70,7 @@ class TestSerialManager:
         mgr.serial = mock_ser
 
         with qtbot.waitSignal(mgr.error_occurred, timeout=2000):
-            result = mgr.connect("COM99")
+            result = mgr.open_connection("COM99")
 
         assert result is False
         assert mgr.is_connected is False
@@ -88,7 +86,7 @@ class TestSerialManager:
         mgr.is_connected = True
 
         with qtbot.waitSignal(mgr.connection_changed, timeout=2000):
-            result = mgr.disconnect()
+            result = mgr.close_connection()
 
         assert result is True
         mock_ser.close.assert_called_once()

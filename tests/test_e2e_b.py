@@ -12,12 +12,12 @@ class TestB:
         cli_ev = []
         srv.client_event.connect(lambda t,a: cli_ev.append((t,a)))
         with qtbot.waitSignal(srv.connection_changed, timeout=3000):
-            srv.connect("127.0.0.1", p, "TCP", "Server")
+            srv.open_connection("127.0.0.1", p, "TCP", "Server")
         cli = SocketManager()
         cli.data_received.connect(lambda d: None)
         with qtbot.waitSignal(srv.client_event, timeout=3000):
-            cli.connect("127.0.0.1", p, "TCP", "Client")
+            cli.open_connection("127.0.0.1", p, "TCP", "Client")
         with qtbot.waitSignal(cli.data_received, timeout=3000):
             srv.send_data(b"x")
-        cli.disconnect()
-        srv.disconnect()
+        cli.close_connection()
+        srv.close_connection()

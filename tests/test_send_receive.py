@@ -27,12 +27,12 @@ class TestTcpClientServerE2E:
         server.data_received.connect(on_data)
 
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client = SocketManager()
 
         with qtbot.waitSignal(server.client_event, timeout=3000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         with qtbot.waitSignal(server.data_received, timeout=3000):
             client.send_data(b"hello from client")
@@ -40,8 +40,8 @@ class TestTcpClientServerE2E:
         assert len(received) > 0
         assert b"hello from client" in received[0]
 
-        client.disconnect()
-        server.disconnect()
+        client.close_connection()
+        server.close_connection()
 
     def test_client_receives_from_server(self, qapp, qtbot):
         received = []
@@ -52,13 +52,13 @@ class TestTcpClientServerE2E:
         server = SocketManager()
 
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client = SocketManager()
         client.data_received.connect(on_data)
 
         with qtbot.waitSignal(server.client_event, timeout=3000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         with qtbot.waitSignal(client.data_received, timeout=3000):
             server.send_data(b"hello from server")
@@ -66,8 +66,8 @@ class TestTcpClientServerE2E:
         assert len(received) > 0
         assert b"hello from server" in received[0]
 
-        client.disconnect()
-        server.disconnect()
+        client.close_connection()
+        server.close_connection()
 
     def test_bidirectional(self, qapp, qtbot):
         server_received = []
@@ -83,13 +83,13 @@ class TestTcpClientServerE2E:
         server.data_received.connect(on_server_data)
 
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client = SocketManager()
         client.data_received.connect(on_client_data)
 
         with qtbot.waitSignal(server.client_event, timeout=3000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         with qtbot.waitSignal(server.data_received, timeout=3000):
             client.send_data(b"ping")
@@ -102,8 +102,8 @@ class TestTcpClientServerE2E:
         assert len(client_received) == 1
         assert client_received[0] == b"pong"
 
-        client.disconnect()
-        server.disconnect()
+        client.close_connection()
+        server.close_connection()
 
 
 class TestUdpE2E:
@@ -117,7 +117,7 @@ class TestUdpE2E:
         server.data_received.connect(on_data)
 
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "UDP", "Server")
+            server.open_connection("127.0.0.1", port, "UDP", "Server")
 
         client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_sock.sendto(b"hello udp", ("127.0.0.1", port))
@@ -129,7 +129,7 @@ class TestUdpE2E:
         assert b"hello udp" in received[0]
 
         client_sock.close()
-        server.disconnect()
+        server.close_connection()
 
 
 class TestConnectionSignals:
@@ -138,9 +138,9 @@ class TestConnectionSignals:
         port = _find_free_port()
         server = SocketManager()
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
         assert server.is_connected is True
-        server.disconnect()
+        server.close_connection()
 
     def test_client_connect_signal(self, qapp, qtbot):
         """Client 连接时发出 connection_changed(True)"""
@@ -148,17 +148,17 @@ class TestConnectionSignals:
 
         server = SocketManager()
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client = SocketManager()
         with qtbot.waitSignal(client.connection_changed, timeout=5000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         assert server.is_connected is True
         assert client.is_connected is True
 
-        client.disconnect()
-        server.disconnect()
+        client.close_connection()
+        server.close_connection()
 
     def test_client_event_signal(self, qapp, qtbot):
         """Server 收到客户端连接时发出 client_event"""
@@ -171,18 +171,18 @@ class TestConnectionSignals:
         server.client_event.connect(on_event)
 
         with qtbot.waitSignal(server.connection_changed, timeout=3000):
-            server.connect("127.0.0.1", port, "TCP", "Server")
+            server.open_connection("127.0.0.1", port, "TCP", "Server")
 
         client = SocketManager()
 
         with qtbot.waitSignal(server.client_event, timeout=5000):
-            client.connect("127.0.0.1", port, "TCP", "Client")
+            client.open_connection("127.0.0.1", port, "TCP", "Client")
 
         assert len(events) > 0
         assert events[0][0] == "connected"
 
-        client.disconnect()
-        server.disconnect()
+        client.close_connection()
+        server.close_connection()
 
 
 if __name__ == '__main__':

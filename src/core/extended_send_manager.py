@@ -81,7 +81,7 @@ class ExtendedSendManager(QObject):
     error_occurred = Signal(str)      # 错误信号
     items_changed = Signal()          # 数据列表改变信号
     
-    def __init__(self, send_func, parent=None):
+    def __init__(self, send_func, config_dir=None, parent=None):
         super().__init__(parent)
         self.send_func = send_func  # 注入的发送函数
         self.items = []  # 扩展发送数据列表
@@ -92,9 +92,11 @@ class ExtendedSendManager(QObject):
         self.send_timer = QTimer()
         self.send_timer.setSingleShot(True)
         self.send_timer.timeout.connect(self._on_send_timer_timeout)
-        
-        # 配置文件路径
-        self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+
+        # 配置文件路径（支持外部注入，多实例隔离）
+        if config_dir is None:
+            config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+        self.config_dir = config_dir
         self.config_file = os.path.join(self.config_dir, "extended_send.json")
         
         self._save_debounce_timer = QTimer()

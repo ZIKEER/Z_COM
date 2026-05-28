@@ -11,11 +11,11 @@ class TestA:
         srv = SocketManager()
         srv.data_received.connect(lambda d: None)
         with qtbot.waitSignal(srv.connection_changed, timeout=3000):
-            srv.connect("127.0.0.1", p, "TCP", "Server")
+            srv.open_connection("127.0.0.1", p, "TCP", "Server")
         cli = SocketManager()
         with qtbot.waitSignal(cli.connection_changed, timeout=3000):
-            cli.connect("127.0.0.1", p, "TCP", "Client")
+            cli.open_connection("127.0.0.1", p, "TCP", "Client")
         with qtbot.waitSignal(srv.data_received, timeout=3000):
             cli.send_data(b"x")
-        cli.disconnect()
-        srv.disconnect()
+        cli.close_connection()
+        srv.close_connection()
