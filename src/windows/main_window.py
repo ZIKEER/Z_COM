@@ -405,8 +405,10 @@ class MainWindow(QMainWindow):
         return self._io.send_data(data, is_hex=False)
 
     def _send_data(self):
+        auto = self.auto_send_timer.isActive()
         if not self._io.is_connected:
-            QMessageBox.warning(self, '警告', '请先打开端口')
+            if not auto:
+                QMessageBox.warning(self, '警告', '请先打开端口')
             return
         data = self.ui.sendTextEdit.toPlainText()
         if not data:
@@ -414,7 +416,8 @@ class MainWindow(QMainWindow):
 
         is_hex = self.ui.sendHexRadio.isChecked()
         if is_hex and not self.data_handler.validate_hex_input(data):
-            QMessageBox.warning(self, '警告', 'HEX 格式输入错误')
+            if not auto:
+                QMessageBox.warning(self, '警告', 'HEX 格式输入错误')
             return
 
         if is_hex:

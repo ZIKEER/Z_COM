@@ -144,11 +144,11 @@ class SocketReaderThread(QThread):
             except OSError as e:
                 if not self._stop_event.is_set():
                     self.error_occurred.emit(str(e))
-                    self.msleep(20)
+                break
             except Exception as e:
                 if not self._stop_event.is_set():
                     self.error_occurred.emit(str(e))
-                    self.msleep(20)
+                break
 
     def stop(self):
         self._stop_event.set()

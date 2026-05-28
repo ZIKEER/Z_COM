@@ -64,7 +64,7 @@ class SerialReaderThread(QThread):
             except Exception as e:
                 if self.running:
                     self.error_occurred.emit(f"\u8bfb\u53d6\u9519\u8bef: {str(e)}")
-                    self.msleep(10)
+                break
 
         self.running = False
 

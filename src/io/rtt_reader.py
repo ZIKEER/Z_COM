@@ -54,7 +54,7 @@ class RttReaderThread(QThread):
             except Exception as e:
                 if self.running:
                     self.error_occurred.emit(f"RTT读取错误: {str(e)}")
-                    self.msleep(10)
+                break
 
         self._emit_buffer()
         self.running = False
