@@ -102,6 +102,7 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._setup_connections()
         self._load_config()
+        self._display_handler.append_event(f"软件启动 {APP_NAME} V{VERSION}", 'green')
 
     # ── 属性 ──
 
@@ -178,6 +179,12 @@ class MainWindow(QMainWindow):
         self.socket_manager.client_event.connect(self._on_socket_client_event)
 
         self.extended_send_manager.data_sent.connect(self._on_extended_data_sent)
+        self.extended_send_manager.send_started.connect(
+            lambda: self._display_handler.append_event(">>> 扩展发送启动", 'green'))
+        self.extended_send_manager.send_finished.connect(
+            lambda: self._display_handler.append_event("<<< 扩展发送停止", 'orange'))
+        self.extended_send_manager.error_occurred.connect(
+            lambda msg: self._display_handler.append_event(f"!!! 扩展发送错误：{msg}", 'red'))
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionClearReceive.triggered.connect(self._clear_receive)
         self.ui.actionClearSend.triggered.connect(self._clear_send)
@@ -373,29 +380,34 @@ class MainWindow(QMainWindow):
             text = self._MODE_BUTTON_TEXT.get(self.io_mode, self._MODE_OPEN_TEXT)
             self.ui.openButton.setText(text)
             self.ui.openButton.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+            port_text = self.ui.portCombo.currentText()
             if self.io_mode == 'socket' and self.socket_manager.current_client:
                 client = self.socket_manager.current_client
-                self._status_bar.set_connected(f'已连接 {client[0]}:{client[1]} ({self.ui.portCombo.currentText()})')
+                self._status_bar.set_connected(f'已连接 {client[0]}:{client[1]} ({port_text})')
             else:
-                self._status_bar.set_connected(f'已连接 {self.ui.portCombo.currentText()}')
+                self._status_bar.set_connected(f'已连接 {port_text}')
             self.ui.refreshButton.setEnabled(False)
             self.ui.portCombo.setEnabled(False)
+            self._display_handler.append_event(f">>> 已连接 {port_text}", 'green')
         else:
+            port_text = self.ui.portCombo.currentText()
             self.ui.openButton.setText(self._MODE_OPEN_TEXT)
             self.ui.openButton.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
             self._status_bar.set_disconnected()
             self.ui.refreshButton.setEnabled(True)
             self.ui.portCombo.setEnabled(True)
+            self._display_handler.append_event(f"<<< 已断开 {port_text}", 'orange')
 
     def _on_error(self, error_msg):
         title = self._ERROR_TITLES.get(self.io_mode, '错误')
+        self._display_handler.append_event(f"!!! {title}：{error_msg}", 'red')
         QMessageBox.critical(self, '错误', f'{title}：{error_msg}')
 
     def _on_socket_client_event(self, event_type, addr):
         host, port = addr
-        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        msg = f'[{ts}] ← Client {event_type}: {host}:{port}'
-        self.ui.receiveTextEdit.append(f'<span style="color:#888;">{escape_html(msg)}</span>')
+        color = 'green' if event_type == 'connected' else 'orange'
+        arrow = '>>>' if event_type == 'connected' else '<<<'
+        self._display_handler.append_event(f"{arrow} Client {event_type}: {host}:{port}", color)
         if self._io.is_connected and self.io_mode == 'socket' and event_type == 'connected':
             self._status_bar.set_connected(f'已连接 {host}:{port} ({self.ui.portCombo.currentText()})')
 
@@ -434,8 +446,7 @@ class MainWindow(QMainWindow):
             self._display_handler.append_data(bytes_data, '→', 'SEND')
             self._update_status_counts()
         else:
-            ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            self.ui.receiveTextEdit.append(f'<span style="color:red;">[{ts}] 发送失败</span>')
+            self._display_handler.append_event("!!! 发送失败", 'red')
 
     def _on_extended_data_sent(self, data):
         self.send_count += len(data)
@@ -630,6 +641,7 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.start(500)
 
     def closeEvent(self, event):
+        self._display_handler.append_event("=== 软件退出 ===", 'orange')
         self._display_handler.flush()
         self.logger.flush()
         self.extended_send_manager.flush()

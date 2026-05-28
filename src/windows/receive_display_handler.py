@@ -58,6 +58,12 @@ class ReceiveDisplayHandler:
         if data:
             self.append_data(data, '←', 'RECEIVE')
 
+    _EVENT_COLORS = {
+        'green': '#4CAF50',
+        'red': '#F44336',
+        'orange': '#FF9800',
+    }
+
     def append_data(self, data, arrow, log_type, client_prefix=None):
         mode = self._get_display_mode()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -73,6 +79,12 @@ class ReceiveDisplayHandler:
 
         html = self._format_display(data, mode, timestamp, display_arrow)
         self._text_edit.append(html)
+
+    def append_event(self, text, color='orange'):
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        c = self._EVENT_COLORS.get(color, color)
+        self._text_edit.append(f'<span style="color:{c};">[{ts}] {escape_html(text)}</span>')
+        self._logger.log_event(text)
 
         if self._text_edit.parent():
             # auto-scroll 由 MainWindow 控制
