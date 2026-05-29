@@ -1,30 +1,31 @@
 {
-  "port": "COM3",
-  "baudrate": "115200",
-  "databits": "8",
-  "stopbits": "1",
-  "parity": "None",
-  "flowcontrol": "None",
-  "frame_timeout": 50,
-  "display_mode": "ASCII",
-  "send_mode": "ASCII",
-  "auto_scroll": true,
-  "auto_send_interval": 1000,
-  "display_ansi": false,
-  "rtt_chip": "",
-  "rtt_speed": 4000,
-  "rtt_reset": false,
-  "rtt_start_address": "",
-  "rtt_range_size": "",
-  "rtt_chip_history": [],
-  "rtt_frame_timeout": 50,
-  "main_splitter_sizes": [
-    423,
-    156
-  ],
-  "top_splitter_sizes": [
-    882,
-    0
-  ],
-  "preset_panel_visible": false
+    "auto_scroll": true,
+    "auto_send_interval": 1000,
+    "baudrate": "115200",
+    "databits": "8",
+    "display_ansi": false,
+    "display_mode": "ASCII",
+    "flowcontrol": "None",
+    "frame_timeout": 50,
+    "main_splitter_sizes": [
+        423,
+        156
+    ],
+    "parity": "None",
+    "port": "COM3",
+    "preset_panel_visible": false,
+    "rtt_chip": "",
+    "rtt_chip_history": [
+    ],
+    "rtt_frame_timeout": 50,
+    "rtt_range_size": "",
+    "rtt_reset": false,
+    "rtt_speed": 4000,
+    "rtt_start_address": "",
+    "send_mode": "ASCII",
+    "stopbits": "1",
+    "top_splitter_sizes": [
+        882,
+        0
+    ]
 }
