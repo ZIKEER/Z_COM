@@ -11,7 +11,7 @@ class SocketReaderThread(QThread):
 
     def __init__(self, sock, mode, frame_timeout=50):
         """
-        mode: 'tcp_client' | 'tcp_server' | 'udp'
+        mode: 'tcp_client' | 'tcp_server' | 'udp_server' | 'udp_client'
         """
         super().__init__()
         self._sock = sock
@@ -79,7 +79,7 @@ class SocketReaderThread(QThread):
     def run(self):
         self._stop_event.clear()
         poll_interval = self._frame_timeout
-        while not self._stop_event.is_set():
+        while not self._stop_event.is_set() and not self.isInterruptionRequested():
             try:
                 if self._mode == 'tcp_client':
                     rlist, _, _ = select.select([self._sock], [], [], poll_interval)
@@ -130,13 +130,15 @@ class SocketReaderThread(QThread):
                     else:
                         self.msleep(int(poll_interval * 1000))
 
-                elif self._mode == 'udp':
+                elif self._mode in ('udp_server', 'udp_client'):
                     rlist, _, _ = select.select([self._sock], [], [], poll_interval)
                     if rlist:
                         data, addr = self._sock.recvfrom(65536)
                         if data:
                             self._current_client = addr
                             self.data_received.emit(bytes(data))
+                            if self._mode == 'udp_server':
+                                self.client_event.emit('connected', addr)
 
                 else:
                     self.msleep(int(poll_interval * 1000))
@@ -152,6 +154,7 @@ class SocketReaderThread(QThread):
 
     def stop(self):
         self._stop_event.set()
+        self.requestInterruption()
         with self._lock:
             for fileno, (csock, addr) in list(self._clients.items()):
                 try:
@@ -164,3 +167,4 @@ class SocketReaderThread(QThread):
             self._sock.close()
         except Exception:
             pass
+        self.wait(1000)

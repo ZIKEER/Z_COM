@@ -146,3 +146,17 @@ class TestMainWindowViaConfigManager:
     def test_io_property_rtt(self, main_window):
         main_window.io_mode = "rtt"
         assert main_window._io is main_window.rtt_manager
+
+
+class TestMainWindowCleanup:
+    def test_jlink_scan_thread_is_cleaned_up_on_close(self, qapp, qtbot, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from src.windows.main_window import MainWindow
+
+        win = MainWindow(instance_id=1)
+        qtbot.addWidget(win)
+        qtbot.waitUntil(lambda: win._jlink_scan_thread is None or not win._jlink_scan_thread.isRunning(), timeout=3000)
+
+        win.close()
+
+        assert win._jlink_scan_thread is None

@@ -34,7 +34,7 @@ class RttReaderThread(QThread):
 
     def run(self):
         self.running = True
-        while self.running:
+        while self.running and not self.isInterruptionRequested():
             try:
                 if self.jlink.opened():
                     now = time.monotonic()
@@ -61,6 +61,5 @@ class RttReaderThread(QThread):
 
     def stop(self):
         self.running = False
+        self.requestInterruption()
         self.wait(1000)
-        if self.isRunning():
-            self.terminate()

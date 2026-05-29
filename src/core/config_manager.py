@@ -21,6 +21,7 @@ class ConfigManager:
             'stopbits': '1',
             'parity': 'None',
             'flowcontrol': 'None',
+            'frame_timeout': 50,
             'display_mode': 'ASCII',
             'send_mode': 'ASCII',
             'auto_scroll': True,
@@ -78,7 +79,8 @@ class ConfigManager:
             'databits': int(self.config.get('databits', 8)),
             'stopbits': float(self.config.get('stopbits', 1)),
             'parity': self.config.get('parity', 'None'),
-            'flowcontrol': self.config.get('flowcontrol', 'None')
+            'flowcontrol': self.config.get('flowcontrol', 'None'),
+            'frame_timeout': int(self.config.get('frame_timeout', self.config.get('rtt_frame_timeout', 50))),
         }
 
     def get_rtt_settings(self):
@@ -90,6 +92,7 @@ class ConfigManager:
             'start_address': self.config.get('rtt_start_address', ''),
             'range_size': self.config.get('rtt_range_size', ''),
             'chip_history': self.config.get('rtt_chip_history', []),
+            'frame_timeout': int(self.config.get('frame_timeout', self.config.get('rtt_frame_timeout', 50))),
         }
 
     def add_rtt_chip_history(self, chip):

@@ -113,7 +113,6 @@ class ExtendedSendManager(QObject):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
                     self.items = config_data.get('items', [])
-                    self._reorder_items()
         except Exception as e:
             print(f"加载扩展发送配置失败: {e}")
     
@@ -145,7 +144,6 @@ class ExtendedSendManager(QObject):
     def remove_item(self, item_id):
         """删除一条数据"""
         self.items = [item for item in self.items if item['id'] != item_id]
-        self._reorder_items()
         self._save_config()
         self.items_changed.emit()
     
@@ -166,14 +164,8 @@ class ExtendedSendManager(QObject):
         new_index = index + direction
         if 0 <= new_index < len(self.items):
             self.items[index], self.items[new_index] = self.items[new_index], self.items[index]
-            self._reorder_items()
             self._save_config()
             self.items_changed.emit()
-    
-    def _reorder_items(self):
-        """重新排序"""
-        for i, item in enumerate(self.items):
-            item['sort_order'] = i
     
     def _generate_id(self):
         """生成唯一ID"""
@@ -299,7 +291,6 @@ class ExtendedSendManager(QObject):
     def load_from_config(self, config_data):
         """从配置数据加载"""
         self.items = config_data.get('items', [])
-        self._reorder_items()
         self._save_config()
         self.items_changed.emit()
     

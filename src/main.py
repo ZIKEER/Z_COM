@@ -36,6 +36,7 @@ def get_instance_id():
 
     for i in itertools.count(1):
         lock_path = os.path.join(lock_dir, f'{exe_key}_inst_{i}.lock')
+        fd = None
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
             if is_windows:
@@ -46,7 +47,8 @@ def get_instance_id():
             # fd 保持打开，进程退出时内核自动释放锁
             return i
         except (IOError, OSError):
-            os.close(fd)
+            if fd is not None:
+                os.close(fd)
 
 
 def set_windows_app_id(instance_id):

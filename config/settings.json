@@ -1,23 +1,22 @@
 {
-  "port": "JLINK:SN=608888289",
+  "port": "COM3",
   "baudrate": "115200",
   "databits": "8",
   "stopbits": "1",
   "parity": "None",
   "flowcontrol": "None",
+  "frame_timeout": 50,
   "display_mode": "ASCII",
   "send_mode": "ASCII",
   "auto_scroll": true,
   "auto_send_interval": 1000,
-  "display_ansi": true,
-  "rtt_chip": "GD32F470ZG",
+  "display_ansi": false,
+  "rtt_chip": "",
   "rtt_speed": 4000,
   "rtt_reset": false,
   "rtt_start_address": "",
   "rtt_range_size": "",
-  "rtt_chip_history": [
-    "GD32F470ZG"
-  ],
+  "rtt_chip_history": [],
   "rtt_frame_timeout": 50,
   "main_splitter_sizes": [
     423,

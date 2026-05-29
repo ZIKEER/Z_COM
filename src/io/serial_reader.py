@@ -31,7 +31,7 @@ class SerialReaderThread(QThread):
 
     def run(self):
         self.running = True
-        while self.running:
+        while self.running and not self.isInterruptionRequested():
             try:
                 if not self.serial_port.is_open:
                     break
@@ -71,8 +71,7 @@ class SerialReaderThread(QThread):
 
     def stop(self):
         self.running = False
+        self.requestInterruption()
         with self._lock:
             self._emit_buffer()
         self.wait(1000)
-        if self.isRunning():
-            self.terminate()

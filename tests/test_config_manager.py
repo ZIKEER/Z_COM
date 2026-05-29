@@ -44,6 +44,7 @@ class TestConfigManager:
         assert s["databits"] == 8
         assert s["stopbits"] == 1.0
         assert s["parity"] == "None"
+        assert s["frame_timeout"] == 50
 
     def test_rtt_settings(self, tmp_config_dir):
         cm = ConfigManager(config_dir=tmp_config_dir)
@@ -51,6 +52,13 @@ class TestConfigManager:
         assert r["speed"] == 4000
         assert r["chip"] == ""
         assert r["reset"] is False
+        assert r["frame_timeout"] == 50
+
+    def test_frame_timeout_shared_key(self, tmp_config_dir):
+        cm = ConfigManager(config_dir=tmp_config_dir)
+        cm.set("frame_timeout", 65)
+        assert cm.get_serial_settings()["frame_timeout"] == 65
+        assert cm.get_rtt_settings()["frame_timeout"] == 65
 
     def test_rtt_chip_history(self, tmp_config_dir):
         cm = ConfigManager(config_dir=tmp_config_dir)

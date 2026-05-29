@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.setSingleShot(True)
         self._save_debounce_timer.timeout.connect(self.config_manager.save)
         self._preset_panel_last_width = 320
+        self._jlink_scan_thread = None
 
         self._init_ui()
         self._setup_connections()
@@ -223,8 +224,10 @@ class MainWindow(QMainWindow):
                 devs = self.rtt_mgr.get_available_devices()
                 self.scan_finished.emit(devs)
 
+        self._cleanup_jlink_scan_thread()
         self._jlink_scan_thread = JLinkScanThread(self.rtt_manager)
         self._jlink_scan_thread.scan_finished.connect(self._on_jlink_scan_finished)
+        self._jlink_scan_thread.finished.connect(self._on_jlink_scan_thread_finished)
         self._jlink_scan_thread.start()
 
         socket_modes = [
@@ -238,6 +241,11 @@ class MainWindow(QMainWindow):
                 self.ui.portCombo.addItem(display_text, key)
                 idx = self.ui.portCombo.count() - 1
                 self.ui.portCombo.setItemData(idx, display_text, Qt.ToolTipRole)
+
+        if current_port is not None:
+            index = self.ui.portCombo.findData(current_port)
+            if index >= 0:
+                self.ui.portCombo.setCurrentIndex(index)
 
     def _on_jlink_scan_finished(self, jlink_devices):
         insert_pos = self.ui.portCombo.count()
@@ -254,6 +262,18 @@ class MainWindow(QMainWindow):
                 self.ui.portCombo.setItemData(insert_pos, display_text, Qt.ToolTipRole)
                 insert_pos += 1
 
+    def _on_jlink_scan_thread_finished(self):
+        if self._jlink_scan_thread:
+            self._jlink_scan_thread.deleteLater()
+            self._jlink_scan_thread = None
+
+    def _cleanup_jlink_scan_thread(self):
+        if self._jlink_scan_thread and self._jlink_scan_thread.isRunning():
+            self._jlink_scan_thread.wait(1000)
+        if self._jlink_scan_thread:
+            self._jlink_scan_thread.deleteLater()
+            self._jlink_scan_thread = None
+
     # ── 设置对话框 ──
 
     def _show_serial_settings(self):
@@ -268,6 +288,11 @@ class MainWindow(QMainWindow):
 
     def _on_serial_settings_changed(self, settings):
         self.serial_manager.update_settings(settings)
+        self.config_manager.set('databits', settings.get('databits', 8))
+        self.config_manager.set('stopbits', settings.get('stopbits', 1))
+        self.config_manager.set('parity', settings.get('parity', 'None'))
+        self.config_manager.set('flowcontrol', settings.get('flowcontrol', 'None'))
+        self.config_manager.save()
         if self.serial_manager.is_connected:
             self.serial_manager.reconfigure()
 
@@ -286,6 +311,7 @@ class MainWindow(QMainWindow):
             self._display_handler.set_batch_window(timeout)
             for mgr in (self.serial_manager, self.rtt_manager, self.socket_manager):
                 mgr.update_settings({'frame_timeout': timeout})
+            self.config_manager.set('frame_timeout', timeout)
             self.config_manager.set('rtt_frame_timeout', timeout)
         if 'display_ansi' in settings:
             self.display_ansi = settings['display_ansi']
@@ -553,8 +579,14 @@ class MainWindow(QMainWindow):
     # ── 配置 ──
 
     def _load_config(self):
-        self.serial_manager.update_settings(self.config_manager.get_serial_settings())
-        self.rtt_manager.update_settings(self.config_manager.get_rtt_settings())
+        serial_settings = self.config_manager.get_serial_settings()
+        rtt_settings = self.config_manager.get_rtt_settings()
+        frame_timeout = int(self.config_manager.get('frame_timeout', self.config_manager.get('rtt_frame_timeout', 50)))
+
+        self.serial_manager.update_settings(serial_settings)
+        self.rtt_manager.update_settings(rtt_settings)
+        self.socket_manager.update_settings({'frame_timeout': frame_timeout})
+        self._display_handler.set_batch_window(frame_timeout)
 
         self.ui.baudrateCombo.setCurrentText(self.config_manager.get('baudrate', '115200'))
 
@@ -641,6 +673,7 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.start(500)
 
     def closeEvent(self, event):
+        self._cleanup_jlink_scan_thread()
         self._save_config()
         if self._io.is_connected:
             self._io.close_connection()

@@ -15,6 +15,12 @@ _PARITY_MAP = {
     'Mark': serial.PARITY_MARK,
     'Space': serial.PARITY_SPACE,
 }
+_FLOWCONTROL_MAP = {
+    'None': (False, False, False),
+    'RTS/CTS': (False, True, False),
+    'DTR/DSR': (False, False, True),
+    'XON/XOFF': (True, False, False),
+}
 
 
 class SerialManager(IOTransport):
@@ -44,6 +50,10 @@ class SerialManager(IOTransport):
         self.serial.bytesize = self.settings['databits']
         self.serial.stopbits = _STOPBITS_MAP.get(self.settings['stopbits'], serial.STOPBITS_ONE)
         self.serial.parity = _PARITY_MAP.get(self.settings['parity'], serial.PARITY_NONE)
+        xonxoff, rtscts, dsrdtr = _FLOWCONTROL_MAP.get(self.settings['flowcontrol'], (False, False, False))
+        self.serial.xonxoff = xonxoff
+        self.serial.rtscts = rtscts
+        self.serial.dsrdtr = dsrdtr
 
     def reconfigure(self):
         with self._lock:
