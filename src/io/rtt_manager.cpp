@@ -167,18 +167,31 @@ bool RttManager::connectImpl(const QVariantMap &params)
         return false;
     }
 
+    // Store params for background thread
+    m_connectParams = params;
+
+    // Run connection in background thread to avoid blocking UI
+    QThread::create([this]() {
+        performConnect();
+    })->start();
+
+    return true; // Return true immediately, connection status will be emitted later
+}
+
+void RttManager::performConnect()
+{
     QMutexLocker locker(&m_mutex);
 
     // Get parameters
-    QString chip = params.value("chip", "nRF52840_xxAA").toString();
-    int speed = params.value("speed", 4000).toInt();
-    bool reset = params.value("reset", false).toBool();
+    QString chip = m_connectParams.value("chip", "nRF52840_xxAA").toString();
+    int speed = m_connectParams.value("speed", 4000).toInt();
+    bool reset = m_connectParams.value("reset", false).toBool();
 
     // Open J-Link
     int handle = fpOpen(-1);  // -1 = default device
     if (handle < 0) {
         emit errorOccurred("Failed to open J-Link device");
-        return false;
+        return;
     }
 
     m_serialNo = fpGetSN ? fpGetSN() : 0;
@@ -189,7 +202,7 @@ bool RttManager::connectImpl(const QVariantMap &params)
         if (result < 0) {
             emit errorOccurred("Failed to select SWD interface");
             fpClose();
-            return false;
+            return;
         }
     }
 
@@ -207,11 +220,13 @@ bool RttManager::connectImpl(const QVariantMap &params)
 
     // Connect to chip
     if (fpConnect) {
+        qDebug() << "[RTT] Connecting to" << chip << "...";
         int result = fpConnect();
+        qDebug() << "[RTT] Connect result:" << result;
         if (result < 0) {
             emit errorOccurred("Failed to connect to chip: " + chip);
             fpClose();
-            return false;
+            return;
         }
     }
 
@@ -226,7 +241,7 @@ bool RttManager::connectImpl(const QVariantMap &params)
         if (result < 0) {
             emit errorOccurred("Failed to start RTT");
             fpClose();
-            return false;
+            return;
         }
     }
 
@@ -238,7 +253,7 @@ bool RttManager::connectImpl(const QVariantMap &params)
     connect(reader, &RttReaderThread::errorOccurred, this, &IOTransport::errorOccurred);
     startReaderThread(reader);
 
-    return true;
+    emit connectionChanged(true);
 }
 
 void RttManager::closeResource()

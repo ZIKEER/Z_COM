@@ -67,6 +67,10 @@ private:
     // Load J-Link SDK
     bool loadJLinkSDK();
 
+    // Perform connection in background thread
+    void performConnect();
+    QVariantMap m_connectParams;
+
     // Function pointers
     JLINKARM_Open fpOpen = nullptr;
     JLINKARM_Close fpClose = nullptr;
