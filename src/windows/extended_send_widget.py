@@ -606,11 +606,7 @@ class ExtendedSendWidget(QWidget):
     def _show_main_context_menu(self, pos):
         """显示主界面右键菜单"""
         menu = QMenu(self)
-        
-        send_action = QAction("发送选中", self)
-        send_action.triggered.connect(self._send_selected)
-        menu.addAction(send_action)
-        
+
         clear_action = QAction("清空所有", self)
         clear_action.triggered.connect(self._clear_items)
         menu.addAction(clear_action)
@@ -630,16 +626,6 @@ class ExtendedSendWidget(QWidget):
     def _show_table_context_menu(self, pos):
         """显示表格右键菜单"""
         self._show_main_context_menu(pos)
-    
-    def _send_selected(self):
-        """发送选中数据"""
-        duplicates = self._check_order_duplicates()
-        if duplicates:
-            QMessageBox.warning(self, "序号重复", 
-                                f"序号 {', '.join(map(str, sorted(duplicates)))} 有重复，请修改")
-            return
-        
-        self.manager.send_multiple(loop=False)
     
     def _clear_items(self):
         """清空所有数据"""

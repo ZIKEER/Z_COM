@@ -1,5 +1,6 @@
 import os
 import json
+from unittest.mock import patch
 from src.core.extended_send_manager import ExtendedSendManager, decode_ascii_escapes, encode_ascii_for_display
 from src.windows.extended_send_widget import (
     SendItemWidget,
@@ -183,3 +184,20 @@ class TestSendItemWidget:
         rendered = widget.send_btn.text().replace("\n", "")
         assert rendered.endswith("...")
         assert rendered == comment[:ELLIPSIS_PREFIX_CHARS] + "..."
+
+
+class TestExtendedSendWidget:
+    def test_context_menu_does_not_include_send_selected_action(self, qapp, extended_send_manager):
+        from src.windows.extended_send_widget import ExtendedSendWidget
+
+        widget = ExtendedSendWidget(extended_send_manager)
+        captured = {}
+
+        def fake_exec(menu, *_args, **_kwargs):
+            captured["texts"] = [action.text() for action in menu.actions()]
+            return None
+
+        with patch("src.windows.extended_send_widget.QMenu.exec_", new=fake_exec):
+            widget._show_main_context_menu(widget.rect().center())
+
+        assert "发送选中" not in captured["texts"]
