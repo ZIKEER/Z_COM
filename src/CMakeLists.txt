@@ -82,7 +82,15 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${Qt6_DIR}/../../../bin")
 if(WINDEPLOYQT_EXECUTABLE)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations "$<TARGET_FILE:${PROJECT_NAME}>"
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --no-translations
+            --no-opengl-sw
+            --no-system-d3d-compiler
+            "$<TARGET_FILE:${PROJECT_NAME}>"
+        # Remove unnecessary DirectX DLLs
+        COMMAND ${CMAKE_COMMAND} -E rm -f
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/dxcompiler.dll"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/dxil.dll"
         COMMENT "Deploying Qt runtime libraries"
     )
 endif()
