@@ -48,6 +48,7 @@ private:
     using JLINKARM_TIF_Select = int (*)(int);
     using JLINKARM_SetSpeed = void (*)(int);
     using JLINKARM_Connect = int (*)();
+    using JLINKARM_SelDevice = int (*)(const char*);
     using JLINKARM_Reset = int (*)(int, int);
     using JLINKARM_Halt = void (*)();
     using JLINKARM_Go = void (*)();
@@ -77,6 +78,7 @@ private:
     JLINKARM_TIF_Select fpTIF_Select = nullptr;
     JLINKARM_SetSpeed fpSetSpeed = nullptr;
     JLINKARM_Connect fpConnect = nullptr;
+    JLINKARM_SelDevice fpSelDevice = nullptr;
     JLINKARM_Reset fpReset = nullptr;
     JLINKARM_Halt fpHalt = nullptr;
     JLINKARM_Go fpGo = nullptr;

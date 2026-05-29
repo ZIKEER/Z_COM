@@ -72,6 +72,7 @@ bool RttManager::loadJLinkSDK()
             fpTIF_Select = (JLINKARM_TIF_Select)m_jlinkLib->resolve("JLINKARM_TIF_Select");
             fpSetSpeed = (JLINKARM_SetSpeed)m_jlinkLib->resolve("JLINKARM_SetSpeed");
             fpConnect = (JLINKARM_Connect)m_jlinkLib->resolve("JLINKARM_Connect");
+            fpSelDevice = (JLINKARM_SelDevice)m_jlinkLib->resolve("JLINKARM_SelDevice");
             fpReset = (JLINKARM_Reset)m_jlinkLib->resolve("JLINKARM_Reset");
             fpHalt = (JLINKARM_Halt)m_jlinkLib->resolve("JLINKARM_Halt");
             fpGo = (JLINKARM_Go)m_jlinkLib->resolve("JLINKARM_Go");
@@ -195,6 +196,13 @@ bool RttManager::connectImpl(const QVariantMap &params)
     // Set speed
     if (fpSetSpeed) {
         fpSetSpeed(speed);
+    }
+
+    // Select device (chip name)
+    if (fpSelDevice && !chip.isEmpty()) {
+        QByteArray chipUtf8 = chip.toUtf8();
+        int result = fpSelDevice(chipUtf8.constData());
+        qDebug() << "[RTT] SelDevice(" << chip << ") result:" << result;
     }
 
     // Connect to chip
