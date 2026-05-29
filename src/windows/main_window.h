@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QTimer>
+#include <QThread>
 
 #include "core/config_manager.h"
 #include "core/data_handler.h"

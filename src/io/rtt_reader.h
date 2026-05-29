@@ -6,11 +6,16 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 
+class RttManager;
+
+/**
+ * @brief RTT 读取线程 - 从 J-Link RTT 缓冲区读取数据
+ */
 class RttReaderThread : public QThread {
     Q_OBJECT
 
 public:
-    explicit RttReaderThread(void *jlink, int bufferIdx = 0,
+    explicit RttReaderThread(RttManager *manager, int bufferIdx = 0,
                              int readSize = 4096, int readIntervalMs = 2,
                              int frameTimeoutMs = 50, QObject *parent = nullptr);
 
@@ -29,7 +34,7 @@ protected:
 private:
     void emitBuffer();
 
-    void *m_jlink;
+    RttManager *m_manager;
     int m_bufferIdx;
     int m_readSize;
     int m_readIntervalMs;

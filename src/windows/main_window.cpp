@@ -198,8 +198,31 @@ void MainWindow::refreshPorts() {
         ui->portCombo->addItem(port.first + " - " + port.second, "serial");
     }
 
-    // J-Link devices
-    // TODO: Add J-Link scan in background thread
+    // J-Link devices (scan in background if available)
+    if (m_rttManager->isJLinkAvailable()) {
+        // Add placeholder for J-Link
+        ui->portCombo->addItem("J-Link (Scanning...)", "jlink");
+
+        // Scan in background
+        QThread::create([this]() {
+            auto devices = m_rttManager->getAvailableDevices();
+            QMetaObject::invokeMethod(this, [this, devices]() {
+                // Remove placeholder
+                int idx = ui->portCombo->findData("jlink");
+                if (idx >= 0) {
+                    ui->portCombo->removeItem(idx);
+                }
+
+                // Add discovered devices
+                for (const auto &device : devices) {
+                    ui->portCombo->addItem(
+                        QStringLiteral("J-Link: %1").arg(device.second),
+                        "jlink:" + device.first
+                    );
+                }
+            });
+        })->start();
+    }
 
     // Socket modes
     ui->portCombo->addItem("TCP Server", "socket");
