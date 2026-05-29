@@ -575,6 +575,8 @@
     <addaction name="actionSettings"/>
     <addaction name="separator"/>
     <addaction name="togglePresetAction"/>
+    <addaction name="separator"/>
+    <addaction name="actionLogConverter"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -613,6 +615,11 @@
    </property>
    <property name="checkable">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionLogConverter">
+   <property name="text">
+    <string>日志转换(&amp;L)...</string>
    </property>
   </action>
   <action name="actionAbout">

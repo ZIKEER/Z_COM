@@ -2,7 +2,7 @@ import sys
 import os
 import gc
 from datetime import datetime
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout
+from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QFileDialog, QInputDialog
 from PySide6.QtCore import QTimer, QThread, Qt
 from PySide6.QtGui import QTextCursor, QIcon, QAction
 
@@ -192,6 +192,7 @@ class MainWindow(QMainWindow):
         self.ui.actionSettings.triggered.connect(self._show_serial_settings)
         self.ui.togglePresetAction.triggered.connect(self._toggle_preset_panel_menu)
         self.ui.actionAbout.triggered.connect(self._show_about)
+        self.ui.actionLogConverter.triggered.connect(self._show_log_converter)
 
     # ── 端口刷新 ──
 
@@ -536,6 +537,31 @@ class MainWindow(QMainWindow):
         self.ui.sendTextEdit.clear()
 
     # ── 关于 ──
+
+    def _show_log_converter(self):
+        from scripts.log_converter import convert_file
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择日志文件", self.logger.log_dir, "日志文件 (*.txt);;所有文件 (*)"
+        )
+        if not file_path:
+            return
+
+        fmt, ok = QInputDialog.getItem(
+            self, "输出格式", "选择转换格式:", ["HEX", "ASCII", "Both"], 2, False
+        )
+        if not ok:
+            return
+
+        fmt_map = {"HEX": "hex", "ASCII": "ascii", "Both": "both"}
+        try:
+            results = convert_file(file_path, fmt_map[fmt])
+            parts = [f"  {k.upper()}: {v}" for k, v in results.items()]
+            QMessageBox.information(
+                self, "转换成功", f"文件已生成：\n" + "\n".join(parts)
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "转换失败", f"转换出错：{e}")
 
     def _show_about(self):
         about_text = f"""{APP_NAME} V{VERSION}
