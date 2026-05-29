@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QCoreApplication>
 
 MainWindow::MainWindow(int instanceId, QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_instanceId(instanceId)
@@ -33,12 +34,19 @@ MainWindow::MainWindow(int instanceId, QWidget *parent)
     m_socketManager = new SocketManager(this);
 
     // Initialize extended send manager
+    // Use the same config directory as ConfigManager for instance isolation
+    QString extSendConfigDir = QCoreApplication::applicationDirPath();
+    if (instanceId > 1) {
+        extSendConfigDir += "/instance_" + QString::number(instanceId);
+    }
+    extSendConfigDir += "/config";
+
     m_extSendManager = new ExtendedSendManager(
         [this](const QByteArray &data) -> bool {
             if (!currentIO()->isConnected()) return false;
             return currentIO()->sendData(QString::fromUtf8(data), false);
         },
-        configDir + "/extended_send.json",
+        extSendConfigDir,
         this
     );
 
