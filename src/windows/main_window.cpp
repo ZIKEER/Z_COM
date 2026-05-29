@@ -303,7 +303,7 @@ void MainWindow::toggleConnection() {
         params["role"] = role;
         m_socketManager->openConnection(params);
 
-    } else if (portText.contains("JLINK")) {
+    } else if (portText.contains("JLINK") || portText.contains("J-Link")) {
         // RTT mode
         m_ioMode = IoMode::Rtt;
         QVariantMap params;
