@@ -6,7 +6,7 @@
 namespace Version {
     constexpr int MAJOR = 0;
     constexpr int MINOR = 1;
-    constexpr int PATCH = 0;
+    constexpr int PATCH = 1;
 
     inline QString versionString() {
         return QStringLiteral("%1.%2.%3").arg(MAJOR).arg(MINOR).arg(PATCH);
