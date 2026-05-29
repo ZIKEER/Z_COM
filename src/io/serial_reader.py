@@ -67,6 +67,7 @@ class SerialReaderThread(QThread):
                 break
 
         self.running = False
+        self._emit_buffer()
 
     def stop(self):
         self.running = False

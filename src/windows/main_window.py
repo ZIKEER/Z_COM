@@ -641,12 +641,12 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.start(500)
 
     def closeEvent(self, event):
-        self._display_handler.append_event("=== 软件退出 ===", 'orange')
-        self._display_handler.flush()
-        self.logger.flush()
-        self.extended_send_manager.flush()
         self._save_config()
         if self._io.is_connected:
             self._io.close_connection()
         self.extended_send_manager.stop_sending()
+        self._display_handler.append_event("=== 软件退出 ===", 'orange')
+        self._display_handler.flush()
+        self.logger.flush()
+        self.extended_send_manager.flush()
         event.accept()

@@ -79,17 +79,16 @@ class ReceiveDisplayHandler:
 
         html = self._format_display(data, mode, timestamp, display_arrow)
         self._text_edit.append(html)
+        self._check_prune()
 
     def append_event(self, text, color='orange'):
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         c = self._EVENT_COLORS.get(color, color)
         self._text_edit.append(f'<span style="color:{c};">[{ts}] {escape_html(text)}</span>')
         self._logger.log_event(text)
+        self._check_prune()
 
-        if self._text_edit.parent():
-            # auto-scroll 由 MainWindow 控制
-            pass
-
+    def _check_prune(self):
         self._append_count += 1
         if self._append_count >= 50:
             self._append_count = 0

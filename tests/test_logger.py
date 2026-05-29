@@ -1,5 +1,12 @@
 import os
+import pytest
 from src.core.logger import Logger, MAX_LOG_FILE_SIZE
+
+
+@pytest.fixture(autouse=True)
+def _reset_logger_counter():
+    Logger._global_counter = 0
+    yield
 
 
 def test_log_creates_file(tmp_path):
