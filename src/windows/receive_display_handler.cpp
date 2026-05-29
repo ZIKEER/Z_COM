@@ -4,6 +4,7 @@
 #include <QTextCursor>
 #include <QMenu>
 #include <QAction>
+#include <QApplication>
 
 ReceiveDisplayHandler::ReceiveDisplayHandler(QTextEdit *textEdit,
                                              DataHandler *dataHandler,
@@ -21,6 +22,21 @@ ReceiveDisplayHandler::ReceiveDisplayHandler(QTextEdit *textEdit,
     m_flushTimer->setSingleShot(true);
     m_flushTimer->setInterval(16); // ~60fps
     connect(m_flushTimer, &QTimer::timeout, this, &ReceiveDisplayHandler::flushPending);
+
+    // Memory optimization timer
+    m_memoryTimer = new QTimer(this);
+    m_memoryTimer->setInterval(MEMORY_CHECK_INTERVAL_MS);
+    connect(m_memoryTimer, &QTimer::timeout, this, [this]() {
+        // Process events to free up pending deletions
+        qApp->processEvents();
+
+        // Compact text document if needed
+        QTextDocument *doc = m_textEdit->document();
+        if (doc->blockCount() > MAX_DISPLAY_LINES * 2) {
+            pruneIfNeeded();
+        }
+    });
+    m_memoryTimer->start();
 }
 
 void ReceiveDisplayHandler::setBatchWindow(int ms) {

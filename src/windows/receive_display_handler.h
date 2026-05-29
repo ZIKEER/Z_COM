@@ -64,6 +64,7 @@ private:
     DisplayAnsiFunc m_displayAnsiFunc;
 
     QTimer *m_flushTimer;
+    QTimer *m_memoryTimer;
     QByteArray m_pendingData;
     int m_appendCount = 0;
     qint64 m_receiveCount = 0;
@@ -72,6 +73,7 @@ private:
     // Display limits
     static const int MAX_DISPLAY_LINES = 5000;
     static const int DISPLAY_PRUNE_LINES = 2500;
+    static const int MEMORY_CHECK_INTERVAL_MS = 10000; // 10 seconds
 
     // Colors
     const QString TIMESTAMP_COLOR = "#00CED1";
