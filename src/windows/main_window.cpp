@@ -366,7 +366,27 @@ void MainWindow::loadConfig() {
     ui->extendedSendContainer->setVisible(presetVisible);
 
     // Splitter sizes
-    // TODO: Restore splitter sizes from config
+    QVariant mainSplitterSizes = m_configManager->get("main_splitter_sizes");
+    if (mainSplitterSizes.isValid()) {
+        QList<int> sizes;
+        for (const QVariant &v : mainSplitterSizes.toList()) {
+            sizes.append(v.toInt());
+        }
+        if (!sizes.isEmpty()) {
+            ui->mainSplitter->setSizes(sizes);
+        }
+    }
+
+    QVariant topSplitterSizes = m_configManager->get("top_splitter_sizes");
+    if (topSplitterSizes.isValid()) {
+        QList<int> sizes;
+        for (const QVariant &v : topSplitterSizes.toList()) {
+            sizes.append(v.toInt());
+        }
+        if (!sizes.isEmpty()) {
+            ui->topSplitter->setSizes(sizes);
+        }
+    }
 
     // Refresh ports
     refreshPorts();
@@ -448,6 +468,21 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         ui->asciiRadio->isChecked() ? "ASCII" : "MIXED");
     m_configManager->set("auto_scroll", ui->autoScrollCheckBox->isChecked());
     m_configManager->set("display_ansi", m_displayAnsi);
+    m_configManager->set("preset_panel_visible", ui->togglePresetButton->isChecked());
+
+    // Save splitter sizes
+    QVariantList mainSizes;
+    for (int size : ui->mainSplitter->sizes()) {
+        mainSizes.append(size);
+    }
+    m_configManager->set("main_splitter_sizes", mainSizes);
+
+    QVariantList topSizes;
+    for (int size : ui->topSplitter->sizes()) {
+        topSizes.append(size);
+    }
+    m_configManager->set("top_splitter_sizes", topSizes);
+
     m_configManager->save();
 
     // Disconnect
