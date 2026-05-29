@@ -376,6 +376,28 @@ void MainWindow::loadConfig() {
     ui->togglePresetButton->setChecked(presetVisible);
     ui->extendedSendContainer->setVisible(presetVisible);
 
+    // Socket settings
+    QString socketHost = m_configManager->get("socket_host", "127.0.0.1").toString();
+    int socketPort = m_configManager->get("socket_port", 8080).toInt();
+    QString socketProtocol = m_configManager->get("socket_protocol", "TCP").toString();
+    QString socketRole = m_configManager->get("socket_role", "Client").toString();
+
+    // Populate socket UI if available
+    if (ui->ipCombo) {
+        ui->ipCombo->clear();
+        if (socketRole == "Server") {
+            for (const QString &ip : SocketManager::getLocalIPs()) {
+                ui->ipCombo->addItem(ip);
+            }
+        } else {
+            ui->ipCombo->setEditable(true);
+            ui->ipCombo->setCurrentText(socketHost);
+        }
+    }
+    if (ui->portSpin) {
+        ui->portSpin->setValue(socketPort);
+    }
+
     // Splitter sizes
     QVariant mainSplitterSizes = m_configManager->get("main_splitter_sizes");
     if (mainSplitterSizes.isValid()) {
@@ -510,6 +532,14 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     m_configManager->set("auto_scroll", ui->autoScrollCheckBox->isChecked());
     m_configManager->set("display_ansi", m_displayAnsi);
     m_configManager->set("preset_panel_visible", ui->togglePresetButton->isChecked());
+
+    // Save socket settings
+    if (ui->ipCombo) {
+        m_configManager->set("socket_host", ui->ipCombo->currentText());
+    }
+    if (ui->portSpin) {
+        m_configManager->set("socket_port", ui->portSpin->value());
+    }
 
     // Save splitter sizes
     QVariantList mainSizes;
