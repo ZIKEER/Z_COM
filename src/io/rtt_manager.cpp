@@ -131,61 +131,23 @@ QList<QPair<QString, QString>> RttManager::getAvailableDevices()
         qDebug() << "[RTT] Found" << numEmulators << "J-Link emulators";
     }
 
-    if (numEmulators <= 0) {
-        // Try to open default device
-        int handle = fpOpen(-1);
+    // Enumerate devices by opening each by index
+    for (int i = 0; i < numEmulators; ++i) {
+        int handle = fpOpen(i);
         if (handle >= 0) {
             int sn = fpGetSN ? fpGetSN() : 0;
+
             char name[256] = {0};
             if (fpGetProductName) {
                 fpGetProductName(name, sizeof(name));
             }
 
+            fpClose();
+
             QString displayName = QString("%1 (SN=%2)").arg(name).arg(sn);
             devices.append({QString::number(sn), displayName});
-            qDebug() << "[RTT] Found default J-Link: SN=" << sn;
-
-            fpClose();
+            qDebug() << "[RTT] Found J-Link: SN=" << sn << "Name=" << name;
         }
-        return devices;
-    }
-
-    // Get emulator list
-    struct EmuInfo {
-        int serialNo;
-        char productName[256];
-    };
-
-    QVector<EmuInfo> emuList(numEmulators);
-    if (fpGetEmuList) {
-        fpGetEmuList(emuList.data(), numEmulators);
-    }
-
-    for (int i = 0; i < numEmulators; ++i) {
-        int sn = emuList[i].serialNo;
-        QString name = QString(emuList[i].productName);
-
-        // Try to open to get more info
-        int handle = fpOpen(sn);
-        if (handle >= 0) {
-            char prodName[256] = {0};
-            if (fpGetProductName) {
-                fpGetProductName(prodName, sizeof(prodName));
-            }
-            name = prodName;
-
-            // Get firmware string
-            char fwStr[256] = {0};
-            if (fpGetFirmwareString) {
-                fpGetFirmwareString(fwStr, sizeof(fwStr));
-            }
-
-            fpClose();
-        }
-
-        QString displayName = QString("%1 (SN=%2)").arg(name).arg(sn);
-        devices.append({QString::number(sn), displayName});
-        qDebug() << "[RTT] Found J-Link: SN=" << sn << "Name=" << name;
     }
 
     return devices;
