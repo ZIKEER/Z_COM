@@ -40,6 +40,7 @@ private slots:
     void togglePresetPanel(bool checked);
     void showLogConverter();
     void showAbout();
+    void checkPortChanges();
 
 private:
     void initUI();
@@ -76,9 +77,11 @@ private:
     QTimer *m_memoryTimer;
     QTimer *m_logFlushTimer;
     QTimer *m_configDebounceTimer;
+    QTimer *m_portPollTimer;
 
     // State
     bool m_displayAnsi = false;
+    QStringList m_lastPorts;
 };
 
 #endif // MAIN_WINDOW_H

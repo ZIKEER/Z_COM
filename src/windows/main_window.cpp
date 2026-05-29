@@ -84,6 +84,12 @@ MainWindow::MainWindow(int instanceId, QWidget *parent)
     m_configDebounceTimer->setSingleShot(true);
     m_configDebounceTimer->setInterval(500);
 
+    // Port polling timer for hotplug detection
+    m_portPollTimer = new QTimer(this);
+    m_portPollTimer->setInterval(2000); // 2 seconds
+    connect(m_portPollTimer, &QTimer::timeout, this, &MainWindow::checkPortChanges);
+    m_portPollTimer->start();
+
     initUI();
     setupConnections();
     loadConfig();
@@ -343,6 +349,11 @@ void MainWindow::togglePresetPanel(bool checked) {
 }
 
 void MainWindow::loadConfig() {
+    // Initialize port list for hotplug detection
+    for (const auto &port : SerialManager::getAvailablePorts()) {
+        m_lastPorts.append(port.first);
+    }
+
     // Baudrate
     QString baudrate = m_configManager->get("baudrate", "115200").toString();
     int idx = ui->baudrateCombo->findText(baudrate);
@@ -458,6 +469,36 @@ void MainWindow::showAbout() {
                        "<li>日志记录与转换</li>"
                        "</ul>")
         .arg(Version::appName(), Version::versionString()));
+}
+
+void MainWindow::checkPortChanges() {
+    // Get current serial ports
+    QStringList currentPorts;
+    for (const auto &port : SerialManager::getAvailablePorts()) {
+        currentPorts.append(port.first);
+    }
+
+    // Compare with last known ports
+    if (currentPorts != m_lastPorts) {
+        // Ports changed, refresh if not connected
+        if (!currentIO()->isConnected()) {
+            QString savedPort;
+            if (ui->portCombo->currentIndex() >= 0) {
+                savedPort = ui->portCombo->currentData().toString();
+            }
+
+            refreshPorts();
+
+            // Restore selected port if still available
+            if (!savedPort.isEmpty()) {
+                int idx = ui->portCombo->findData(savedPort);
+                if (idx >= 0) {
+                    ui->portCombo->setCurrentIndex(idx);
+                }
+            }
+        }
+        m_lastPorts = currentPorts;
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
