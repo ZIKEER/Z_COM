@@ -51,9 +51,13 @@ bool RttManager::loadJLinkSDK()
         }
     }
 
-    // Try to load DLL
+    // Try to load DLL (64-bit for our 64-bit application)
     for (const QString &dir : searchPaths) {
-        QString dllPath = QDir(dir).absoluteFilePath("JLinkARM.dll");
+        QString dllPath = QDir(dir).absoluteFilePath("JLink_x64.dll");
+        if (!QFile::exists(dllPath)) {
+            // Fallback to JLinkARM.dll (32-bit)
+            dllPath = QDir(dir).absoluteFilePath("JLinkARM.dll");
+        }
         if (QFile::exists(dllPath)) {
             m_jlinkLib = new QLibrary(dllPath, this);
 
@@ -62,9 +66,9 @@ bool RttManager::loadJLinkSDK()
             fpClose = (JLINKARM_Close)m_jlinkLib->resolve("JLINKARM_Close");
             fpIsOpen = (JLINKARM_IsOpen)m_jlinkLib->resolve("JLINKARM_IsOpen");
             fpGetSN = (JLINKARM_GetSN)m_jlinkLib->resolve("JLINKARM_GetSN");
-            fpGetProductName = (JLINKARM_GetProductName)m_jlinkLib->resolve("JLINKARM_GetProductName");
-            fpGetNumEmulators = (JLINKARM_GetNumEmulators)m_jlinkLib->resolve("JLINKARM_GetNumEmulators");
-            fpGetEmuList = (JLINKARM_GetEmuList)m_jlinkLib->resolve("JLINKARM_GetEmuList");
+            fpGetProductName = (JLINKARM_EMU_GetProductName)m_jlinkLib->resolve("JLINKARM_EMU_GetProductName");
+            fpGetNumEmulators = (JLINKARM_EMU_GetNumDevices)m_jlinkLib->resolve("JLINKARM_EMU_GetNumDevices");
+            fpGetEmuList = (JLINKARM_EMU_GetList)m_jlinkLib->resolve("JLINKARM_EMU_GetList");
             fpTIF_Select = (JLINKARM_TIF_Select)m_jlinkLib->resolve("JLINKARM_TIF_Select");
             fpSetSpeed = (JLINKARM_SetSpeed)m_jlinkLib->resolve("JLINKARM_SetSpeed");
             fpConnect = (JLINKARM_Connect)m_jlinkLib->resolve("JLINKARM_Connect");
@@ -82,17 +86,6 @@ bool RttManager::loadJLinkSDK()
             fpRTT_Control = (JLINK_RTTERMINAL_Control)m_jlinkLib->resolve("JLINK_RTTERMINAL_Control");
             fpRTT_Read = (JLINK_RTTERMINAL_Read)m_jlinkLib->resolve("JLINK_RTTERMINAL_Read");
             fpRTT_Write = (JLINK_RTTERMINAL_Write)m_jlinkLib->resolve("JLINK_RTTERMINAL_Write");
-
-            // Debug: print which functions failed to load
-            if (!fpOpen) qDebug() << "[RTT] Failed to resolve: JLINKARM_Open";
-            if (!fpClose) qDebug() << "[RTT] Failed to resolve: JLINKARM_Close";
-            if (!fpIsOpen) qDebug() << "[RTT] Failed to resolve: JLINKARM_IsOpen";
-            if (!fpConnect) qDebug() << "[RTT] Failed to resolve: JLINKARM_Connect";
-            if (!fpTIF_Select) qDebug() << "[RTT] Failed to resolve: JLINKARM_TIF_Select";
-            if (!fpSetSpeed) qDebug() << "[RTT] Failed to resolve: JLINKARM_SetSpeed";
-            if (!fpRTT_Control) qDebug() << "[RTT] Failed to resolve: JLINK_RTTERMINAL_Control";
-            if (!fpRTT_Read) qDebug() << "[RTT] Failed to resolve: JLINK_RTTERMINAL_Read";
-            if (!fpRTT_Write) qDebug() << "[RTT] Failed to resolve: JLINK_RTTERMINAL_Write";
 
             // Check if essential functions are loaded
             if (fpOpen && fpClose && fpIsOpen && fpConnect &&

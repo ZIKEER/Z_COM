@@ -42,9 +42,9 @@ private:
     using JLINKARM_Close = void (*)();
     using JLINKARM_IsOpen = int (*)();
     using JLINKARM_GetSN = int (*)();
-    using JLINKARM_GetProductName = int (*)(char*, int);
-    using JLINKARM_GetNumEmulators = int (*)();
-    using JLINKARM_GetEmuList = int (*)(void*, int);
+    using JLINKARM_EMU_GetProductName = int (*)(char*, int);
+    using JLINKARM_EMU_GetNumDevices = int (*)();
+    using JLINKARM_EMU_GetList = int (*)(void*, int);
     using JLINKARM_TIF_Select = int (*)(int);
     using JLINKARM_SetSpeed = void (*)(int);
     using JLINKARM_Connect = int (*)();
@@ -71,9 +71,9 @@ private:
     JLINKARM_Close fpClose = nullptr;
     JLINKARM_IsOpen fpIsOpen = nullptr;
     JLINKARM_GetSN fpGetSN = nullptr;
-    JLINKARM_GetProductName fpGetProductName = nullptr;
-    JLINKARM_GetNumEmulators fpGetNumEmulators = nullptr;
-    JLINKARM_GetEmuList fpGetEmuList = nullptr;
+    JLINKARM_EMU_GetProductName fpGetProductName = nullptr;
+    JLINKARM_EMU_GetNumDevices fpGetNumEmulators = nullptr;
+    JLINKARM_EMU_GetList fpGetEmuList = nullptr;
     JLINKARM_TIF_Select fpTIF_Select = nullptr;
     JLINKARM_SetSpeed fpSetSpeed = nullptr;
     JLINKARM_Connect fpConnect = nullptr;
