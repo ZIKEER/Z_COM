@@ -7,7 +7,6 @@
 
 // J-Link constants
 #define JLINK_TIF_SWD 1
-#define JLINK_EMU_CAPS_RTT (1 << 12)
 
 RttManager::RttManager(QObject *parent)
     : IOTransport(parent)
@@ -58,30 +57,46 @@ bool RttManager::loadJLinkSDK()
         if (QFile::exists(dllPath)) {
             m_jlinkLib = new QLibrary(dllPath, this);
 
-            // Load function pointers
-            fpOpen = (JLINK_Open)m_jlinkLib->resolve("JLINK_Open");
-            fpClose = (JLINK_Close)m_jlinkLib->resolve("JLINK_Close");
-            fpIsOpen = (JLINK_IsOpen)m_jlinkLib->resolve("JLINK_IsOpen");
-            fpGetSN = (JLINK_GetSN)m_jlinkLib->resolve("JLINK_GetSN");
-            fpGetProductName = (JLINK_GetProductName)m_jlinkLib->resolve("JLINK_GetProductName");
-            fpGetNumEmulators = (JLINK_GetNumEmulators)m_jlinkLib->resolve("JLINK_GetNumEmulators");
-            fpGetEmuList = (JLINK_GetEmuList)m_jlinkLib->resolve("JLINK_GetEmuList");
-            fpTIF_Select = (JLINK_TIF_Select)m_jlinkLib->resolve("JLINK_TIF_Select");
-            fpSetSpeed = (JLINK_SetSpeed)m_jlinkLib->resolve("JLINK_SetSpeed");
-            fpConnect = (JLINK_Connect)m_jlinkLib->resolve("JLINK_Connect");
-            fpReset = (JLINK_Reset)m_jlinkLib->resolve("JLINK_Reset");
-            fpRTT_Start = (JLINK_RTT_Start)m_jlinkLib->resolve("JLINK_RTT_Start");
-            fpRTT_Stop = (JLINK_RTT_Stop)m_jlinkLib->resolve("JLINK_RTT_Stop");
-            fpRTT_Read = (JLINK_RTT_Read)m_jlinkLib->resolve("JLINK_RTT_Read");
-            fpRTT_Write = (JLINK_RTT_Write)m_jlinkLib->resolve("JLINK_RTT_Write");
-            fpGetDLLVersion = (JLINK_GetDLLVersion)m_jlinkLib->resolve("JLINK_GetDLLVersion");
-            fpGetEmuCaps = (JLINK_GetEmuCaps)m_jlinkLib->resolve("JLINK_GetEmuCaps");
-            fpGetHardwareVersion = (JLINK_GetHardwareVersion)m_jlinkLib->resolve("JLINK_GetHardwareVersion");
-            fpGetFirmwareString = (JLINK_GetFirmwareString)m_jlinkLib->resolve("JLINK_GetFirmwareString");
+            // Load function pointers (JLINKARM_ prefix for most functions)
+            fpOpen = (JLINKARM_Open)m_jlinkLib->resolve("JLINKARM_Open");
+            fpClose = (JLINKARM_Close)m_jlinkLib->resolve("JLINKARM_Close");
+            fpIsOpen = (JLINKARM_IsOpen)m_jlinkLib->resolve("JLINKARM_IsOpen");
+            fpGetSN = (JLINKARM_GetSN)m_jlinkLib->resolve("JLINKARM_GetSN");
+            fpGetProductName = (JLINKARM_GetProductName)m_jlinkLib->resolve("JLINKARM_GetProductName");
+            fpGetNumEmulators = (JLINKARM_GetNumEmulators)m_jlinkLib->resolve("JLINKARM_GetNumEmulators");
+            fpGetEmuList = (JLINKARM_GetEmuList)m_jlinkLib->resolve("JLINKARM_GetEmuList");
+            fpTIF_Select = (JLINKARM_TIF_Select)m_jlinkLib->resolve("JLINKARM_TIF_Select");
+            fpSetSpeed = (JLINKARM_SetSpeed)m_jlinkLib->resolve("JLINKARM_SetSpeed");
+            fpConnect = (JLINKARM_Connect)m_jlinkLib->resolve("JLINKARM_Connect");
+            fpReset = (JLINKARM_Reset)m_jlinkLib->resolve("JLINKARM_Reset");
+            fpHalt = (JLINKARM_Halt)m_jlinkLib->resolve("JLINKARM_Halt");
+            fpGo = (JLINKARM_Go)m_jlinkLib->resolve("JLINKARM_Go");
+            fpReadMem = (JLINKARM_ReadMem)m_jlinkLib->resolve("JLINKARM_ReadMem");
+            fpWriteMem = (JLINKARM_WriteMem)m_jlinkLib->resolve("JLINKARM_WriteMem");
+            fpGetDLLVersion = (JLINKARM_GetDLLVersion)m_jlinkLib->resolve("JLINKARM_GetDLLVersion");
+            fpGetEmuCaps = (JLINKARM_GetEmuCaps)m_jlinkLib->resolve("JLINKARM_GetEmuCaps");
+            fpGetHardwareVersion = (JLINKARM_GetHardwareVersion)m_jlinkLib->resolve("JLINKARM_GetHardwareVersion");
+            fpGetFirmwareString = (JLINKARM_GetFirmwareString)m_jlinkLib->resolve("JLINKARM_GetFirmwareString");
+
+            // RTT functions (JLINK_ prefix)
+            fpRTT_Control = (JLINK_RTTERMINAL_Control)m_jlinkLib->resolve("JLINK_RTTERMINAL_Control");
+            fpRTT_Read = (JLINK_RTTERMINAL_Read)m_jlinkLib->resolve("JLINK_RTTERMINAL_Read");
+            fpRTT_Write = (JLINK_RTTERMINAL_Write)m_jlinkLib->resolve("JLINK_RTTERMINAL_Write");
+
+            // Debug: print which functions failed to load
+            if (!fpOpen) qDebug() << "[RTT] Failed to resolve: JLINKARM_Open";
+            if (!fpClose) qDebug() << "[RTT] Failed to resolve: JLINKARM_Close";
+            if (!fpIsOpen) qDebug() << "[RTT] Failed to resolve: JLINKARM_IsOpen";
+            if (!fpConnect) qDebug() << "[RTT] Failed to resolve: JLINKARM_Connect";
+            if (!fpTIF_Select) qDebug() << "[RTT] Failed to resolve: JLINKARM_TIF_Select";
+            if (!fpSetSpeed) qDebug() << "[RTT] Failed to resolve: JLINKARM_SetSpeed";
+            if (!fpRTT_Control) qDebug() << "[RTT] Failed to resolve: JLINK_RTTERMINAL_Control";
+            if (!fpRTT_Read) qDebug() << "[RTT] Failed to resolve: JLINK_RTTERMINAL_Read";
+            if (!fpRTT_Write) qDebug() << "[RTT] Failed to resolve: JLINK_RTTERMINAL_Write";
 
             // Check if essential functions are loaded
-            if (fpOpen && fpClose && fpIsOpen && fpRTT_Start && fpRTT_Stop &&
-                fpRTT_Read && fpRTT_Write) {
+            if (fpOpen && fpClose && fpIsOpen && fpConnect &&
+                fpRTT_Control && fpRTT_Read && fpRTT_Write) {
                 m_jlinkAvailable = true;
                 qDebug() << "[RTT] J-Link SDK loaded from:" << dllPath;
 
@@ -93,7 +108,7 @@ bool RttManager::loadJLinkSDK()
 
                 return true;
             } else {
-                qDebug() << "[RTT] Failed to load J-Link functions from:" << dllPath;
+                qDebug() << "[RTT] Failed to load essential J-Link functions from:" << dllPath;
                 delete m_jlinkLib;
                 m_jlinkLib = nullptr;
             }
@@ -202,24 +217,9 @@ bool RttManager::connectImpl(const QVariantMap &params)
     QString chip = params.value("chip", "nRF52840_xxAA").toString();
     int speed = params.value("speed", 4000).toInt();
     bool reset = params.value("reset", false).toBool();
-    QString startAddressStr = params.value("start_address").toString();
-    QString rangeSizeStr = params.value("range_size").toString();
-
-    unsigned int startAddress = 0;
-    unsigned int rangeSize = 0;
-
-    if (!startAddressStr.isEmpty()) {
-        bool ok;
-        startAddress = startAddressStr.toUInt(&ok, 16);
-    }
-    if (!rangeSizeStr.isEmpty()) {
-        bool ok;
-        rangeSize = rangeSizeStr.toUInt(&ok, 16);
-    }
 
     // Open J-Link
-    int serialNo = params.value("serial_no", -1).toInt();
-    int handle = fpOpen(serialNo);
+    int handle = fpOpen(-1);  // -1 = default device
     if (handle < 0) {
         emit errorOccurred("Failed to open J-Link device");
         return false;
@@ -258,8 +258,8 @@ bool RttManager::connectImpl(const QVariantMap &params)
     }
 
     // Start RTT
-    if (fpRTT_Start) {
-        int result = fpRTT_Start(startAddress, rangeSize, 0);
+    if (fpRTT_Control) {
+        int result = fpRTT_Control(1, nullptr); // 1 = Start
         if (result < 0) {
             emit errorOccurred("Failed to start RTT");
             fpClose();
@@ -282,8 +282,8 @@ void RttManager::closeResource()
 {
     QMutexLocker locker(&m_mutex);
 
-    if (m_connected && fpRTT_Stop) {
-        fpRTT_Stop();
+    if (m_connected && fpRTT_Control) {
+        fpRTT_Control(0, nullptr); // 0 = Stop
     }
 
     if (fpClose) {

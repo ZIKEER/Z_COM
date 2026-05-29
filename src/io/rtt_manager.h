@@ -37,50 +37,60 @@ protected:
     bool sendBytes(const QByteArray &data) override;
 
 private:
-    // J-Link SDK function types
-    using JLINK_Open = int (*)(int);
-    using JLINK_Close = void (*)();
-    using JLINK_IsOpen = int (*)();
-    using JLINK_GetSN = int (*)();
-    using JLINK_GetProductName = int (*)(char*, int);
-    using JLINK_GetNumEmulators = int (*)();
-    using JLINK_GetEmuList = int (*)(void*, int);
-    using JLINK_TIF_Select = int (*)(int);
-    using JLINK_SetSpeed = int (*)(int);
-    using JLINK_Connect = int (*)();
-    using JLINK_Reset = int (*)(int, int);
-    using JLINK_RTT_Start = int (*)(unsigned int, unsigned int, unsigned int);
-    using JLINK_RTT_Stop = int (*)();
-    using JLINK_RTT_Read = int (*)(unsigned int, void*, unsigned int);
-    using JLINK_RTT_Write = int (*)(unsigned int, const void*, unsigned int);
-    using JLINK_GetDLLVersion = int (*)();
-    using JLINK_GetEmuCaps = int (*)();
-    using JLINK_GetHardwareVersion = int (*)();
-    using JLINK_GetFirmwareString = int (*)(char*, int);
+    // J-Link SDK function types (JLINKARM_ prefix)
+    using JLINKARM_Open = int (*)(int);  // int serial_no
+    using JLINKARM_Close = void (*)();
+    using JLINKARM_IsOpen = int (*)();
+    using JLINKARM_GetSN = int (*)();
+    using JLINKARM_GetProductName = int (*)(char*, int);
+    using JLINKARM_GetNumEmulators = int (*)();
+    using JLINKARM_GetEmuList = int (*)(void*, int);
+    using JLINKARM_TIF_Select = int (*)(int);
+    using JLINKARM_SetSpeed = void (*)(int);
+    using JLINKARM_Connect = int (*)();
+    using JLINKARM_Reset = int (*)(int, int);
+    using JLINKARM_Halt = void (*)();
+    using JLINKARM_Go = void (*)();
+    using JLINKARM_ReadMem = int (*)(unsigned int, void*, int);
+    using JLINKARM_WriteMem = int (*)(unsigned int, const void*, int);
+    using JLINKARM_GetDLLVersion = int (*)();
+    using JLINKARM_GetEmuCaps = int (*)();
+    using JLINKARM_GetHardwareVersion = int (*)();
+    using JLINKARM_GetFirmwareString = int (*)(char*, int);
+
+    // RTT functions (JLINK_ prefix)
+    using JLINK_RTTERMINAL_Control = int (*)(int, void*);
+    using JLINK_RTTERMINAL_Read = int (*)(int, void*, int);
+    using JLINK_RTTERMINAL_Write = int (*)(int, const void*, int);
 
     // Load J-Link SDK
     bool loadJLinkSDK();
 
     // Function pointers
-    JLINK_Open fpOpen = nullptr;
-    JLINK_Close fpClose = nullptr;
-    JLINK_IsOpen fpIsOpen = nullptr;
-    JLINK_GetSN fpGetSN = nullptr;
-    JLINK_GetProductName fpGetProductName = nullptr;
-    JLINK_GetNumEmulators fpGetNumEmulators = nullptr;
-    JLINK_GetEmuList fpGetEmuList = nullptr;
-    JLINK_TIF_Select fpTIF_Select = nullptr;
-    JLINK_SetSpeed fpSetSpeed = nullptr;
-    JLINK_Connect fpConnect = nullptr;
-    JLINK_Reset fpReset = nullptr;
-    JLINK_RTT_Start fpRTT_Start = nullptr;
-    JLINK_RTT_Stop fpRTT_Stop = nullptr;
-    JLINK_RTT_Read fpRTT_Read = nullptr;
-    JLINK_RTT_Write fpRTT_Write = nullptr;
-    JLINK_GetDLLVersion fpGetDLLVersion = nullptr;
-    JLINK_GetEmuCaps fpGetEmuCaps = nullptr;
-    JLINK_GetHardwareVersion fpGetHardwareVersion = nullptr;
-    JLINK_GetFirmwareString fpGetFirmwareString = nullptr;
+    JLINKARM_Open fpOpen = nullptr;
+    JLINKARM_Close fpClose = nullptr;
+    JLINKARM_IsOpen fpIsOpen = nullptr;
+    JLINKARM_GetSN fpGetSN = nullptr;
+    JLINKARM_GetProductName fpGetProductName = nullptr;
+    JLINKARM_GetNumEmulators fpGetNumEmulators = nullptr;
+    JLINKARM_GetEmuList fpGetEmuList = nullptr;
+    JLINKARM_TIF_Select fpTIF_Select = nullptr;
+    JLINKARM_SetSpeed fpSetSpeed = nullptr;
+    JLINKARM_Connect fpConnect = nullptr;
+    JLINKARM_Reset fpReset = nullptr;
+    JLINKARM_Halt fpHalt = nullptr;
+    JLINKARM_Go fpGo = nullptr;
+    JLINKARM_ReadMem fpReadMem = nullptr;
+    JLINKARM_WriteMem fpWriteMem = nullptr;
+    JLINKARM_GetDLLVersion fpGetDLLVersion = nullptr;
+    JLINKARM_GetEmuCaps fpGetEmuCaps = nullptr;
+    JLINKARM_GetHardwareVersion fpGetHardwareVersion = nullptr;
+    JLINKARM_GetFirmwareString fpGetFirmwareString = nullptr;
+
+    // RTT function pointers
+    JLINK_RTTERMINAL_Control fpRTT_Control = nullptr;
+    JLINK_RTTERMINAL_Read fpRTT_Read = nullptr;
+    JLINK_RTTERMINAL_Write fpRTT_Write = nullptr;
 
     QLibrary *m_jlinkLib = nullptr;
     bool m_jlinkAvailable = false;
