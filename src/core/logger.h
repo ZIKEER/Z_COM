@@ -26,6 +26,9 @@ public:
     // Get current log file path
     QString currentLogPath() const { return m_logPath; }
 
+    // Get log directory path
+    QString logDir() const { return m_logDir; }
+
 private:
     void createNewLogFile();
     void rotateIfNeeded();

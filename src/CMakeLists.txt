@@ -7,6 +7,7 @@ set(SOURCES
     core/logger.cpp
     core/ansi_parser.cpp
     core/extended_send_manager.cpp
+    core/log_converter.cpp
     io/io_transport.cpp
     io/serial_manager.cpp
     io/serial_reader.cpp
@@ -29,6 +30,7 @@ set(HEADERS
     core/logger.h
     core/ansi_parser.h
     core/extended_send_manager.h
+    core/log_converter.h
     io/io_transport.h
     io/serial_manager.h
     io/serial_reader.h

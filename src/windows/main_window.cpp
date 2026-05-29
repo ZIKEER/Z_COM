@@ -2,12 +2,15 @@
 #include "ui_main_window.h"
 #include "serial_settings_dialog.h"
 #include "extended_send_widget.h"
+#include "core/log_converter.h"
 #include "version.h"
 
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QSerialPortInfo>
 #include <QThread>
+#include <QFileDialog>
+#include <QInputDialog>
 
 MainWindow::MainWindow(int instanceId, QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_instanceId(instanceId)
@@ -167,11 +170,10 @@ void MainWindow::setupConnections() {
     connect(ui->togglePresetAction, &QAction::triggered, [this](bool checked) {
         ui->togglePresetButton->setChecked(checked);
     });
-    connect(ui->actionAbout, &QAction::triggered, [this]() {
-        QMessageBox::about(this, "About",
-            QStringLiteral("<h3>%1 V%2</h3><p>Qt C++ Serial Communication Tool</p>")
-            .arg(Version::appName(), Version::versionString()));
-    });
+    connect(ui->actionAbout, &QAction::triggered, this, &MainWindow::showAbout);
+
+    // Log converter
+    connect(ui->actionLogConverter, &QAction::triggered, this, &MainWindow::showLogConverter);
 
     // Extended send widget
     connect(m_extSendWidget, &ExtendedSendWidget::sendData, [this](const QByteArray &data) {
@@ -376,6 +378,66 @@ void MainWindow::saveConfig() {
 
 void MainWindow::saveConfigItem(const QString &key) {
     // Already handled by ConfigManager's debounce
+}
+
+void MainWindow::showLogConverter() {
+    QString filePath = QFileDialog::getOpenFileName(
+        this, QStringLiteral("选择日志文件"),
+        m_logger->logDir(),
+        QStringLiteral("日志文件 (*.txt);;所有文件 (*)")
+    );
+    if (filePath.isEmpty()) return;
+
+    QStringList formats;
+    formats << "HEX" << "ASCII" << "Both";
+
+    bool ok;
+    QString format = QInputDialog::getItem(
+        this, QStringLiteral("输出格式"),
+        QStringLiteral("选择转换格式:"),
+        formats, 2, false, &ok
+    );
+    if (!ok) return;
+
+    LogConverter::Format fmt;
+    if (format == "HEX") fmt = LogConverter::Format::Hex;
+    else if (format == "ASCII") fmt = LogConverter::Format::ASCII;
+    else fmt = LogConverter::Format::Both;
+
+    try {
+        LogConverter::Result result = LogConverter::convertFile(filePath, fmt);
+
+        QStringList parts;
+        if (!result.hexPath.isEmpty())
+            parts << QStringLiteral("  HEX: %1").arg(result.hexPath);
+        if (!result.asciiPath.isEmpty())
+            parts << QStringLiteral("  ASCII: %1").arg(result.asciiPath);
+
+        QMessageBox::information(
+            this, QStringLiteral("转换成功"),
+            QStringLiteral("文件已生成：\n%1").arg(parts.join('\n'))
+        );
+    } catch (const std::exception &e) {
+        QMessageBox::warning(
+            this, QStringLiteral("转换失败"),
+            QStringLiteral("转换出错：%1").arg(e.what())
+        );
+    }
+}
+
+void MainWindow::showAbout() {
+    QMessageBox::about(this, QStringLiteral("关于"),
+        QStringLiteral("<h3>%1 V%2</h3>"
+                       "<p>基于 Qt C++ 开发的多协议调试工具</p>"
+                       "<p>功能特性：</p>"
+                       "<ul>"
+                       "<li>串口通信</li>"
+                       "<li>J-Link RTT</li>"
+                       "<li>TCP/UDP Socket</li>"
+                       "<li>扩展发送</li>"
+                       "<li>日志记录与转换</li>"
+                       "</ul>")
+        .arg(Version::appName(), Version::versionString()));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

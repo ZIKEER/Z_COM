@@ -38,6 +38,8 @@ private slots:
     void onError(const QString &error);
     void onSocketClientEvent(const QString &eventType, const QPair<QString, int> &address);
     void togglePresetPanel(bool checked);
+    void showLogConverter();
+    void showAbout();
 
 private:
     void initUI();
