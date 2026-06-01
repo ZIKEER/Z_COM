@@ -2,7 +2,7 @@ import os
 import threading
 from datetime import datetime
 
-MAX_LOG_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_LOG_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 class Logger:
