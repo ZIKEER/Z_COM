@@ -1,5 +1,4 @@
 import socket
-import threading
 from PySide6.QtCore import Signal
 from src.io.io_transport import IOTransport
 from src.io.socket_reader import SocketReaderThread
@@ -53,26 +52,17 @@ class SocketManager(IOTransport):
         return self._mode
 
     def open_connection(self, host, port, protocol='TCP', role='Client'):
-        """Socket 专用连接入口，签名与 IOTransport.connect 不同。"""
-        with self._lock:
-            if self.is_connected:
-                self._disconnect_internal()
-            try:
-                self._open_socket(host, port, protocol, role)
-                frame_timeout = self.settings.get('frame_timeout', 50)
-                thread = SocketReaderThread(
-                    self.server_sock if self._mode == 'tcp_server' else self.sock,
-                    self._mode, frame_timeout,
-                )
-                thread.client_event.connect(self.client_event)
-                self._connect_reader_thread(thread)
-                self.is_connected = True
-                self.connection_changed.emit(True)
-                return True
-            except Exception as e:
-                self._disconnect_internal()
-                self.error_occurred.emit(f"Socket 连接失败: {str(e)}")
-                return False
+        return super().open_connection(host, port, protocol=protocol, role=role)
+
+    def _connect_impl(self, host, port, protocol='TCP', role='Client'):
+        self._open_socket(host, port, protocol, role)
+        frame_timeout = self.settings.get('frame_timeout', 50)
+        thread = SocketReaderThread(
+            self.server_sock if self._mode == 'tcp_server' else self.sock,
+            self._mode, frame_timeout,
+        )
+        thread.client_event.connect(self.client_event)
+        self._connect_reader_thread(thread)
 
     def _open_socket(self, host, port, protocol, role):
         """创建并配置底层 socket，设置 self._mode。"""

@@ -163,8 +163,4 @@ class SocketReaderThread(QThread):
                     pass
             self._clients.clear()
             self._current_client = None
-        try:
-            self._sock.close()
-        except Exception:
-            pass
         self.wait(1000)

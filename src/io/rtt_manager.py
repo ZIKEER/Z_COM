@@ -18,16 +18,17 @@ class RttManager(IOTransport):
             'frame_timeout': 50,
         }
 
-    def _import_pylink(self):
+    def _import_pylink(self, emit_error=True):
         try:
             import pylink
             return pylink
         except ImportError:
-            self.error_occurred.emit("未找到 pylink 库，请安装: pip install pylink")
+            if emit_error:
+                self.error_occurred.emit("未找到 pylink 库，请安装: pip install pylink")
             return None
 
     def get_available_devices(self):
-        pylink = self._import_pylink()
+        pylink = self._import_pylink(emit_error=False)
         if pylink is None:
             print("[RTT] pylink 导入失败，无法扫描 J-Link 设备")
             return []
@@ -93,56 +94,55 @@ class RttManager(IOTransport):
 
     def open_connection(self, serial_no=None, chip=None, speed=None, reset_flag=None,
                         start_address=None, range_size=None):
-        """RTT 专用连接入口。"""
-        pylink = self._import_pylink()
+        return super().open_connection(
+            serial_no=serial_no,
+            chip=chip,
+            speed=speed,
+            reset_flag=reset_flag,
+            start_address=start_address,
+            range_size=range_size,
+        )
+
+    def _connect_impl(self, serial_no=None, chip=None, speed=None, reset_flag=None,
+                      start_address=None, range_size=None):
+        pylink = self._import_pylink(emit_error=False)
         if pylink is None:
-            return False
+            raise RuntimeError("未找到 pylink 库，请安装: pip install pylink")
 
-        with self._lock:
-            if self.is_connected:
-                self._disconnect_internal()
-            try:
-                chip = chip or self.settings.get('chip', 'nRF52840_xxAA')
-                speed = speed or self.settings.get('speed', 4000)
-                reset_flag = reset_flag if reset_flag is not None else self.settings.get('reset', True)
+        chip = chip or self.settings.get('chip', 'nRF52840_xxAA')
+        speed = speed or self.settings.get('speed', 4000)
+        reset_flag = reset_flag if reset_flag is not None else self.settings.get('reset', True)
 
-                if start_address is None:
-                    addr_str = self.settings.get('start_address', '')
-                    if addr_str and addr_str.strip():
-                        start_address = int(addr_str, 16)
-                if range_size is None:
-                    range_str = self.settings.get('range_size', '')
-                    if range_str and range_str.strip():
-                        range_size = int(range_str, 16)
+        if start_address is None:
+            addr_str = self.settings.get('start_address', '')
+            if addr_str and addr_str.strip():
+                start_address = int(addr_str, 16)
+        if range_size is None:
+            range_str = self.settings.get('range_size', '')
+            if range_str and range_str.strip():
+                range_size = int(range_str, 16)
 
-                self.jlink = pylink.JLink()
-                if serial_no:
-                    self.jlink.open(serial_no=int(serial_no))
-                else:
-                    self.jlink.open()
+        self.jlink = pylink.JLink()
+        if serial_no:
+            self.jlink.open(serial_no=int(serial_no))
+        else:
+            self.jlink.open()
 
-                self.jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
-                self.jlink.set_speed(speed)
-                self.jlink.connect(chip)
+        self.jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
+        self.jlink.set_speed(speed)
+        self.jlink.connect(chip)
 
-                if reset_flag:
-                    self.jlink.reset(ms=10, halt=False)
+        if reset_flag:
+            self.jlink.reset(ms=10, halt=False)
 
-                self.jlink.rtt_start(start_address)
+        self.jlink.rtt_start(start_address)
 
-                frame_timeout = self.settings.get('frame_timeout', 50) / 1000.0
-                thread = RttReaderThread(
-                    self.jlink, buffer_idx=0, read_size=8192,
-                    read_interval=0.002, frame_timeout=frame_timeout,
-                )
-                self._connect_reader_thread(thread)
-                self.is_connected = True
-                self.connection_changed.emit(True)
-                return True
-            except Exception as e:
-                self._disconnect_internal()
-                self.error_occurred.emit(f"J-Link 连接失败: {str(e)}")
-                return False
+        frame_timeout = self.settings.get('frame_timeout', 50) / 1000.0
+        thread = RttReaderThread(
+            self.jlink, buffer_idx=0, read_size=8192,
+            read_interval=0.002, frame_timeout=frame_timeout,
+        )
+        self._connect_reader_thread(thread)
 
     def _close_resource(self):
         if self.jlink and self.jlink.opened():
