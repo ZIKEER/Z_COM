@@ -76,11 +76,11 @@ void SendItemWidget::buildCommentButtonContent(const QString &comment) {
 
 void SendItemWidget::showDataContextMenu(const QPoint &pos) {
     QMenu menu;
-    menu.addAction("Advanced Edit", this, &SendItemWidget::openAdvancedEditor);
+    menu.addAction(QStringLiteral("高级编辑"), this, &SendItemWidget::openAdvancedEditor);
     menu.addSeparator();
-    menu.addAction("Cut", m_dataEdit, &QLineEdit::cut);
-    menu.addAction("Copy", m_dataEdit, &QLineEdit::copy);
-    menu.addAction("Paste", m_dataEdit, &QLineEdit::paste);
+    menu.addAction(QStringLiteral("剪切"), m_dataEdit, &QLineEdit::cut);
+    menu.addAction(QStringLiteral("复制"), m_dataEdit, &QLineEdit::copy);
+    menu.addAction(QStringLiteral("粘贴"), m_dataEdit, &QLineEdit::paste);
     menu.exec(m_dataEdit->mapToGlobal(pos));
 }
 
@@ -93,8 +93,8 @@ void SendItemWidget::openAdvancedEditor() {
 
 void SendItemWidget::editComment() {
     bool ok;
-    QString comment = QInputDialog::getText(this, "Edit Comment",
-                                            "Comment:", QLineEdit::Normal,
+    QString comment = QInputDialog::getText(this, QStringLiteral("编辑备注"),
+                                            QStringLiteral("备注:"), QLineEdit::Normal,
                                             m_item.comment, &ok);
     if (ok) {
         setComment(comment);
@@ -119,11 +119,16 @@ ExtendedSendWidget::ExtendedSendWidget(ExtendedSendManager *manager, QWidget *pa
     m_table->verticalHeader()->setVisible(false);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
 
+    // Store button references for mode switching
+    m_deleteButton = ui_form->deleteButton;
+    m_moveUpButton = ui_form->moveUpButton;
+    m_moveDownButton = ui_form->moveDownButton;
+
     // Connect buttons
     connect(ui_form->addButton, &QPushButton::clicked, this, &ExtendedSendWidget::addItem);
-    connect(ui_form->deleteButton, &QPushButton::clicked, this, &ExtendedSendWidget::onDeleteClicked);
-    connect(ui_form->moveUpButton, &QPushButton::clicked, this, &ExtendedSendWidget::onMoveUpClicked);
-    connect(ui_form->moveDownButton, &QPushButton::clicked, this, &ExtendedSendWidget::onMoveDownClicked);
+    connect(m_deleteButton, &QPushButton::clicked, this, &ExtendedSendWidget::onDeleteClicked);
+    connect(m_moveUpButton, &QPushButton::clicked, this, &ExtendedSendWidget::onMoveUpClicked);
+    connect(m_moveDownButton, &QPushButton::clicked, this, &ExtendedSendWidget::onMoveDownClicked);
     connect(ui_form->startSendButton, &QPushButton::clicked, this, &ExtendedSendWidget::onStartSendClicked);
 
     // Manager signals
@@ -137,27 +142,44 @@ ExtendedSendWidget::ExtendedSendWidget(ExtendedSendManager *manager, QWidget *pa
 void ExtendedSendWidget::refreshTable() {
     m_table->setRowCount(0);
 
+    bool inOpMode = (m_operationMode != OperationMode::Normal);
+    int colOffset = inOpMode ? 1 : 0;
+
+    if (inOpMode) {
+        m_table->setColumnCount(5);
+        m_table->setHorizontalHeaderLabels({"Select", "HEX", "Data/Comment", "Order", "Delay"});
+    } else {
+        m_table->setColumnCount(4);
+        m_table->setHorizontalHeaderLabels({"HEX", "Data/Comment", "Order", "Delay"});
+    }
+
     QList<SendItem> items = m_manager->allItems();
     for (const SendItem &item : items) {
         int row = m_table->rowCount();
         m_table->insertRow(row);
 
+        // Selection checkbox (only in operation mode)
+        if (inOpMode) {
+            auto *selCheck = new QCheckBox;
+            m_table->setCellWidget(row, 0, selCheck);
+        }
+
         // HEX checkbox
         auto *hexCheck = new QCheckBox;
         hexCheck->setChecked(item.isHex);
-        m_table->setCellWidget(row, 0, hexCheck);
+        m_table->setCellWidget(row, 0 + colOffset, hexCheck);
 
         // Data/Comment widget
         auto *itemWidget = new SendItemWidget(item);
-        m_table->setCellWidget(row, 1, itemWidget);
+        m_table->setCellWidget(row, 1 + colOffset, itemWidget);
 
         // Order
         auto *orderItem = new QTableWidgetItem(QString::number(item.sortOrder));
-        m_table->setItem(row, 2, orderItem);
+        m_table->setItem(row, 2 + colOffset, orderItem);
 
         // Delay
         auto *delayItem = new QTableWidgetItem(QString::number(item.delay));
-        m_table->setItem(row, 3, delayItem);
+        m_table->setItem(row, 3 + colOffset, delayItem);
     }
 }
 
@@ -167,43 +189,100 @@ void ExtendedSendWidget::addItem() {
 
 void ExtendedSendWidget::onDeleteClicked() {
     if (m_operationMode != OperationMode::Delete) {
+        exitOperationMode();
         m_operationMode = OperationMode::Delete;
-        // TODO: Add selection checkboxes
+        m_deleteButton->setText(QStringLiteral("确认删除"));
+        m_deleteButton->setStyleSheet("background-color: #FF6B6B; color: white;");
+        refreshTable();
         return;
     }
 
-    // Delete selected items
-    for (int row = m_table->rowCount() - 1; row >= 0; --row) {
-        auto *check = qobject_cast<QCheckBox *>(m_table->cellWidget(row, 0));
-        if (check && check->isChecked()) {
-            // Get item ID from manager
-            QList<SendItem> items = m_manager->allItems();
-            if (row < items.size()) {
-                m_manager->removeItem(items[row].id);
-            }
-        }
+    // Second click: delete selected items
+    QList<int> ids = getSelectedItemIds();
+    if (ids.isEmpty()) {
+        exitOperationMode();
+        return;
     }
-    m_operationMode = OperationMode::Normal;
+
+    for (int id : ids) {
+        m_manager->removeItem(id);
+    }
+    exitOperationMode();
 }
 
 void ExtendedSendWidget::onMoveUpClicked() {
-    int row = m_table->currentRow();
-    if (row <= 0) return;
-
-    QList<SendItem> items = m_manager->allItems();
-    if (row < items.size()) {
-        m_manager->moveItem(items[row].id, -1);
+    if (m_operationMode != OperationMode::MoveUp) {
+        exitOperationMode();
+        m_operationMode = OperationMode::MoveUp;
+        m_moveUpButton->setText(QStringLiteral("确认上移"));
+        m_moveUpButton->setStyleSheet("background-color: #20B2AA; color: white;");
+        refreshTable();
+        return;
     }
+
+    // Second click: move selected items up
+    QList<int> ids = getSelectedItemIds();
+    if (ids.isEmpty()) {
+        exitOperationMode();
+        return;
+    }
+
+    for (int id : ids) {
+        m_manager->moveItem(id, -1);
+    }
+    exitOperationMode();
 }
 
 void ExtendedSendWidget::onMoveDownClicked() {
-    int row = m_table->currentRow();
-    if (row < 0 || row >= m_table->rowCount() - 1) return;
-
-    QList<SendItem> items = m_manager->allItems();
-    if (row < items.size()) {
-        m_manager->moveItem(items[row].id, 1);
+    if (m_operationMode != OperationMode::MoveDown) {
+        exitOperationMode();
+        m_operationMode = OperationMode::MoveDown;
+        m_moveDownButton->setText(QStringLiteral("确认下移"));
+        m_moveDownButton->setStyleSheet("background-color: #20B2AA; color: white;");
+        refreshTable();
+        return;
     }
+
+    // Second click: move selected items down
+    QList<int> ids = getSelectedItemIds();
+    if (ids.isEmpty()) {
+        exitOperationMode();
+        return;
+    }
+
+    for (int id : ids) {
+        m_manager->moveItem(id, 1);
+    }
+    exitOperationMode();
+}
+
+void ExtendedSendWidget::exitOperationMode() {
+    m_operationMode = OperationMode::Normal;
+    if (m_deleteButton) {
+        m_deleteButton->setText(QStringLiteral("删除"));
+        m_deleteButton->setStyleSheet("");
+    }
+    if (m_moveUpButton) {
+        m_moveUpButton->setText(QStringLiteral("上移"));
+        m_moveUpButton->setStyleSheet("");
+    }
+    if (m_moveDownButton) {
+        m_moveDownButton->setText(QStringLiteral("下移"));
+        m_moveDownButton->setStyleSheet("");
+    }
+    refreshTable();
+}
+
+QList<int> ExtendedSendWidget::getSelectedItemIds() const {
+    QList<int> ids;
+    QList<SendItem> items = m_manager->allItems();
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        auto *check = qobject_cast<QCheckBox *>(m_table->cellWidget(row, 0));
+        if (check && check->isChecked() && row < items.size()) {
+            ids.append(items[row].id);
+        }
+    }
+    return ids;
 }
 
 void ExtendedSendWidget::onStartSendClicked() {
@@ -219,13 +298,16 @@ void ExtendedSendWidget::setupContextMenu() {
     setContextMenuPolicy(Qt::CustomContextMenu);
     connect(this, &QWidget::customContextMenuRequested, [this](const QPoint &pos) {
         QMenu menu;
-        menu.addAction("Clear All", [this]() { m_manager->clearItems(); });
+        menu.addAction(QStringLiteral("发送选中"), [this]() {
+            m_manager->sendMultiple(false);
+        });
+        menu.addAction(QStringLiteral("清空所有"), [this]() { m_manager->clearItems(); });
         menu.addSeparator();
-        menu.addAction("Import Config", [this]() {
+        menu.addAction(QStringLiteral("导入配置"), [this]() {
             QString path = QFileDialog::getOpenFileName(this, "Import", "", "JSON (*.json)");
             if (!path.isEmpty()) m_manager->importFromFile(path);
         });
-        menu.addAction("Export Config", [this]() {
+        menu.addAction(QStringLiteral("导出配置"), [this]() {
             QString path = QFileDialog::getSaveFileName(this, "Export", "", "JSON (*.json)");
             if (!path.isEmpty()) m_manager->exportToFile(path);
         });

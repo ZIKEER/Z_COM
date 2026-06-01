@@ -58,9 +58,15 @@ private:
 
     ExtendedSendManager *m_manager;
     QTableWidget *m_table;
+    QPushButton *m_deleteButton = nullptr;
+    QPushButton *m_moveUpButton = nullptr;
+    QPushButton *m_moveDownButton = nullptr;
 
-    enum class OperationMode { Normal, Delete, Move };
+    enum class OperationMode { Normal, Delete, MoveUp, MoveDown };
     OperationMode m_operationMode = OperationMode::Normal;
+
+    void exitOperationMode();
+    QList<int> getSelectedItemIds() const;
 };
 
 #endif // EXTENDED_SEND_WIDGET_H
