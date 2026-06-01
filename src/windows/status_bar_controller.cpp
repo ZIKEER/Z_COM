@@ -5,16 +5,16 @@ StatusBarController::StatusBarController(QStatusBar *statusBar) {
     m_statusLabel->setStyleSheet("color: red; font-weight: bold;");
     statusBar->addPermanentWidget(m_statusLabel);
 
-    m_sendCountLabel = new QLabel("TX: 0");
+    m_sendCountLabel = new QLabel("发送: 0 字节");
     statusBar->addPermanentWidget(m_sendCountLabel);
 
-    m_receiveCountLabel = new QLabel("RX: 0");
+    m_receiveCountLabel = new QLabel("接收: 0 字节");
     statusBar->addPermanentWidget(m_receiveCountLabel);
 }
 
 void StatusBarController::updateCounts(qint64 sendCount, qint64 receiveCount) {
-    m_sendCountLabel->setText(QStringLiteral("TX: %1").arg(sendCount));
-    m_receiveCountLabel->setText(QStringLiteral("RX: %1").arg(receiveCount));
+    m_sendCountLabel->setText(QStringLiteral("发送: %1 字节").arg(sendCount));
+    m_receiveCountLabel->setText(QStringLiteral("接收: %1 字节").arg(receiveCount));
 }
 
 void StatusBarController::setConnected(const QString &text) {

@@ -13,8 +13,8 @@ public:
     void setDisconnected();
 
     // Display constants
-    static const int MAX_DISPLAY_LINES = 5000;
-    static const int DISPLAY_PRUNE_LINES = 2500;
+    static const int MAX_DISPLAY_LINES = 10000;
+    static const int DISPLAY_PRUNE_LINES = 5000;
 
 private:
     QLabel *m_statusLabel;
