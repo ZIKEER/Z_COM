@@ -138,7 +138,13 @@ void MainWindow::setupConnections() {
     connect(ui->sendButton, &QPushButton::clicked, this, &MainWindow::sendData);
     connect(ui->clearReceiveButton, &QPushButton::clicked, [this]() {
         ui->receiveTextEdit->clear();
+        m_displayHandler->resetCounts();
+        m_statusBarController->updateCounts(0, 0);
     });
+
+    // Baudrate hot reconfigure
+    connect(ui->baudrateCombo, &QComboBox::currentTextChanged,
+            this, &MainWindow::onBaudrateChanged);
 
     // Toggle preset panel
     connect(ui->togglePresetButton, &QPushButton::toggled, this, &MainWindow::togglePresetPanel);
@@ -176,6 +182,8 @@ void MainWindow::setupConnections() {
     connect(ui->actionExit, &QAction::triggered, this, &QMainWindow::close);
     connect(ui->actionClearReceive, &QAction::triggered, [this]() {
         ui->receiveTextEdit->clear();
+        m_displayHandler->resetCounts();
+        m_statusBarController->updateCounts(0, 0);
     });
     connect(ui->actionClearSend, &QAction::triggered, [this]() {
         ui->sendTextEdit->clear();
@@ -195,6 +203,12 @@ void MainWindow::setupConnections() {
             currentIO()->sendData(QString::fromUtf8(data), false);
             m_displayHandler->appendData(data, "->", "SEND");
         }
+    });
+
+    // Status bar byte counter updates
+    connect(m_displayHandler, &ReceiveDisplayHandler::countsChanged,
+            this, [this](qint64 sendCount, qint64 receiveCount) {
+        m_statusBarController->updateCounts(sendCount, receiveCount);
     });
 }
 
@@ -260,6 +274,18 @@ void MainWindow::showSerialSettings() {
     connect(dialog, &SerialSettingsDialog::settingsChanged, [this](const QVariantMap &s) {
         for (auto it = s.begin(); it != s.end(); ++it) {
             m_configManager->set(it.key(), it.value());
+        }
+        // Hot reconfigure serial port if connected
+        if (m_ioMode == IoMode::Serial && m_serialManager->isConnected()) {
+            QVariantMap updates;
+            if (s.contains("databits")) updates["databits"] = s["databits"];
+            if (s.contains("stopbits")) updates["stopbits"] = s["stopbits"];
+            if (s.contains("parity")) updates["parity"] = s["parity"];
+            if (s.contains("flowcontrol")) updates["flowcontrol"] = s["flowcontrol"];
+            if (!updates.isEmpty()) {
+                m_serialManager->updateSettings(updates);
+                m_serialManager->reconfigure();
+            }
         }
     });
 
@@ -522,6 +548,22 @@ void MainWindow::showAbout() {
                        "<li>日志记录与转换</li>"
                        "</ul>")
         .arg(Version::appName(), Version::versionString()));
+}
+
+void MainWindow::onBaudrateChanged(const QString &text) {
+    bool ok;
+    int baudrate = text.toInt(&ok);
+    if (!ok || baudrate <= 0) return;
+
+    m_configManager->set("baudrate", text);
+
+    // Hot reconfigure serial port if connected
+    if (m_ioMode == IoMode::Serial && m_serialManager->isConnected()) {
+        QVariantMap updates;
+        updates["baudrate"] = baudrate;
+        m_serialManager->updateSettings(updates);
+        m_serialManager->reconfigure();
+    }
 }
 
 void MainWindow::checkPortChanges() {

@@ -42,6 +42,7 @@ private slots:
     void showLogConverter();
     void showAbout();
     void checkPortChanges();
+    void onBaudrateChanged(const QString &text);
 
 private:
     void initUI();
