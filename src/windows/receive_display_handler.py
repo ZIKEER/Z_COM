@@ -14,13 +14,14 @@ class ReceiveDisplayHandler:
     """接收区数据显示管理：批量拼包、格式化、裁剪、ANSI 处理。"""
 
     def __init__(self, receive_text_edit, data_handler, ansi_parser, logger,
-                 get_display_mode, get_display_ansi):
+                 get_display_mode, get_display_ansi, get_auto_scroll):
         self._text_edit = receive_text_edit
         self._data_handler = data_handler
         self._ansi_parser = ansi_parser
         self._logger = logger
         self._get_display_mode = get_display_mode
         self._get_display_ansi = get_display_ansi
+        self._get_auto_scroll = get_auto_scroll
 
         self.receive_count = 0
         self._pending_data = bytearray()
@@ -77,14 +78,14 @@ class ReceiveDisplayHandler:
         ascii_str = self._data_handler.bytes_to_ascii(data)
         self._logger.log(timestamp, log_type, hex_str, ascii_str)
 
-        html = self._format_display(data, mode, timestamp, display_arrow)
-        self._text_edit.append(html)
+        html = self._format_display(data, mode, timestamp, display_arrow, hex_str, ascii_str)
+        self._append_html(html)
         self._check_prune()
 
     def append_event(self, text, color='orange'):
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         c = self._EVENT_COLORS.get(color, color)
-        self._text_edit.append(f'<span style="color:{c};">[{ts}] {escape_html(text)}</span>')
+        self._append_html(f'<span style="color:{c};">[{ts}] {escape_html(text)}</span>')
         self._logger.log_event(text)
         self._check_prune()
 
@@ -94,14 +95,13 @@ class ReceiveDisplayHandler:
             self._append_count = 0
             self._prune_if_needed()
 
-    def _format_display(self, data, mode, timestamp, arrow):
-        hex_str = self._data_handler.bytes_to_hex(data)
+    def _format_display(self, raw_data, mode, timestamp, arrow, hex_str, ascii_str):
         display_ansi = self._get_display_ansi()
 
         if display_ansi and mode != 'HEX':
-            ascii_colored = self._ansi_parser.bytes_to_html(data, self._data_handler.bytes_to_ascii)
+            ascii_colored = self._ansi_parser.bytes_to_html(raw_data, self._data_handler.bytes_to_ascii)
         else:
-            ascii_colored = escape_html(self._data_handler.bytes_to_ascii(data))
+            ascii_colored = escape_html(ascii_str)
 
         ts_tag = f'<span style="color:{DISPLAY_TIMESTAMP_COLOR};">[{timestamp}]</span>'
         arrow_tag = f'<span style="color:{DISPLAY_ARROW_COLOR}; font-weight:bold;">{arrow}</span>'
@@ -116,6 +116,16 @@ class ReceiveDisplayHandler:
         if mode == 'MIXED':
             return f'{ts_tag}<br>' + '<br>'.join(lines)
         return f'{ts_tag} ' + lines[0]
+
+    def _append_html(self, html):
+        scroll_bar = self._text_edit.verticalScrollBar()
+        previous_value = scroll_bar.value()
+        self._text_edit.append(html)
+        if self._get_auto_scroll():
+            self._text_edit.moveCursor(QTextCursor.MoveOperation.End)
+            self._text_edit.ensureCursorVisible()
+        else:
+            scroll_bar.setValue(previous_value)
 
     def _prune_if_needed(self):
         doc = self._text_edit.document()
@@ -134,6 +144,9 @@ class ReceiveDisplayHandler:
         self._flush_timer.stop()
         self._text_edit.clear()
         self.receive_count = 0
+
+    def stop_timers(self):
+        self._flush_timer.stop()
 
     def flush(self):
         self._flush_pending()

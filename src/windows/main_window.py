@@ -1,21 +1,21 @@
 import sys
 import os
 import gc
-from datetime import datetime
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QFileDialog, QInputDialog
 from PySide6.QtCore import QTimer, QThread, Qt
-from PySide6.QtGui import QTextCursor, QIcon, QAction
+from PySide6.QtGui import QIcon
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from ui.Ui_main_window import Ui_MainWindow
 from src.windows.serial_settings_dialog import SerialSettingsDialog
 from src.core.config_manager import ConfigManager
 from src.core.extended_send_manager import ExtendedSendManager
+from src.core.path_utils import get_resource_path
 from src.windows.extended_send_widget import ExtendedSendWidget
 from src.windows.status_bar_controller import StatusBarController
 from src.windows.receive_display_handler import ReceiveDisplayHandler
 from src.io.rtt_manager import RttManager
-from src.core.ansi_parser import AnsiParser, escape_html
+from src.core.ansi_parser import AnsiParser
 from src.core.data_handler import DataHandler
 from src.core.logger import Logger
 from src.version import APP_NAME, VERSION, ICON_PATH
@@ -24,14 +24,6 @@ from src.io.socket_manager import SocketManager
 from src.build_info import BUILD_TIME
 
 MEMORY_RECOVER_INTERVAL_MS = 10000
-
-
-def get_resource_path(relative_path):
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
 
 
 class MainWindow(QMainWindow):
@@ -80,6 +72,7 @@ class MainWindow(QMainWindow):
             self.logger,
             get_display_mode=lambda: self._display_mode,
             get_display_ansi=lambda: self.display_ansi,
+            get_auto_scroll=lambda: self.ui.autoScrollCheckBox.isChecked(),
         )
 
         # 状态栏
@@ -607,14 +600,18 @@ class MainWindow(QMainWindow):
     def _load_config(self):
         serial_settings = self.config_manager.get_serial_settings()
         rtt_settings = self.config_manager.get_rtt_settings()
-        frame_timeout = int(self.config_manager.get('frame_timeout', self.config_manager.get('rtt_frame_timeout', 50)))
+        frame_timeout = self.config_manager.get_int(
+            'frame_timeout',
+            self.config_manager.get_int('rtt_frame_timeout', 50, minimum=1),
+            minimum=1,
+        )
 
         self.serial_manager.update_settings(serial_settings)
         self.rtt_manager.update_settings(rtt_settings)
         self.socket_manager.update_settings({'frame_timeout': frame_timeout})
         self._display_handler.set_batch_window(frame_timeout)
 
-        self.ui.baudrateCombo.setCurrentText(self.config_manager.get('baudrate', '115200'))
+        self.ui.baudrateCombo.setCurrentText(str(self.config_manager.get('baudrate', '115200')))
 
         display_mode = self.config_manager.get('display_mode', 'ASCII')
         if display_mode == 'HEX':
@@ -630,23 +627,23 @@ class MainWindow(QMainWindow):
         else:
             self.ui.sendAsciiRadio.setChecked(True)
 
-        self.ui.autoScrollCheckBox.setChecked(self.config_manager.get('auto_scroll', True))
-        self.ui.intervalSpinBox.setValue(self.config_manager.get('auto_send_interval', 1000))
+        self.ui.autoScrollCheckBox.setChecked(self.config_manager.get_bool('auto_scroll', True))
+        self.ui.intervalSpinBox.setValue(
+            self.config_manager.get_int('auto_send_interval', 1000, minimum=10)
+        )
 
-        main_sizes = self.config_manager.get('main_splitter_sizes', [590, 92])
-        if isinstance(main_sizes, list) and len(main_sizes) == 2:
-            self.ui.mainSplitter.setSizes(main_sizes)
+        main_sizes = self.config_manager.get_int_list('main_splitter_sizes', [590, 92], expected_len=2, minimum=1)
+        self.ui.mainSplitter.setSizes(main_sizes)
 
-        top_sizes = self.config_manager.get('top_splitter_sizes', [700, 320])
-        if isinstance(top_sizes, list) and len(top_sizes) == 2:
-            self._preset_panel_last_width = top_sizes[1]
+        top_sizes = self.config_manager.get_int_list('top_splitter_sizes', [700, 320], expected_len=2, minimum=0)
+        self._preset_panel_last_width = top_sizes[1]
 
-        preset_panel_visible = self.config_manager.get('preset_panel_visible', False)
+        preset_panel_visible = self.config_manager.get_bool('preset_panel_visible', False)
         self._set_preset_panel_visible(preset_panel_visible)
         self.ui.togglePresetButton.setChecked(preset_panel_visible)
         self.ui.togglePresetAction.setChecked(preset_panel_visible)
 
-        self.display_ansi = self.config_manager.get('display_ansi', False)
+        self.display_ansi = self.config_manager.get_bool('display_ansi', False)
 
         saved_port = self.config_manager.get('port', '')
         self._refresh_ports(block_signals=True)
@@ -699,11 +696,17 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.start(500)
 
     def closeEvent(self, event):
+        self.auto_send_timer.stop()
+        self._memory_recover_timer.stop()
+        self._log_flush_timer.stop()
+        self._save_debounce_timer.stop()
+        self._display_handler.stop_timers()
+        self.extended_send_manager.stop_sending()
+        self.extended_send_manager.stop_timers()
         self._cleanup_jlink_scan_thread()
         self._save_config()
         if self._io.is_connected:
             self._io.close_connection()
-        self.extended_send_manager.stop_sending()
         self._display_handler.append_event("=== 软件退出 ===", 'orange')
         self._display_handler.flush()
         self.logger.flush()

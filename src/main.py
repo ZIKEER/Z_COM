@@ -6,18 +6,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
+from src.core.path_utils import get_resource_path
 from src.windows.main_window import MainWindow
 from src.version import ICON_PATH, APP_NAME
-
-
-def get_resource_path(relative_path):
-    """获取资源文件的绝对路径，支持打包后的路径"""
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
-
 
 def get_instance_id():
     """通过文件锁确定实例号，按 exe 完整路径隔离，跨平台崩溃安全"""

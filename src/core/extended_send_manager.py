@@ -282,6 +282,10 @@ class ExtendedSendManager(QObject):
         self._sending_items = None
         self.send_timer.stop()
 
+    def stop_timers(self):
+        self.send_timer.stop()
+        self._save_debounce_timer.stop()
+
     def flush(self):
         """防抖定时器未触发时立即保存"""
         if self._save_debounce_timer.isActive():
