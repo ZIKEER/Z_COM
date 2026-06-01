@@ -91,7 +91,7 @@ void ReceiveDisplayHandler::appendData(const QByteArray &data, const QString &ar
                                         const QString &logType, const QString &clientPrefix) {
     if (data.isEmpty()) return;
 
-    QString timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
     QString mode = m_displayModeFunc ? m_displayModeFunc() : "ASCII";
 
     // Format display
@@ -123,13 +123,14 @@ void ReceiveDisplayHandler::appendData(const QByteArray &data, const QString &ar
     } else if (logType == "SEND") {
         m_sendCount += data.size();
     }
+    emit countsChanged(m_sendCount, m_receiveCount);
 
     m_appendCount++;
     checkPrune();
 }
 
 void ReceiveDisplayHandler::appendEvent(const QString &text, const QString &color) {
-    QString timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
     QString html = QStringLiteral("<span style=\"color:%1;\">[%2] %3</span>")
                    .arg(TIMESTAMP_COLOR, timestamp, text);
 
@@ -166,6 +167,19 @@ QString ReceiveDisplayHandler::formatDisplay(const QByteArray &data, const QStri
         html += m_ansiParser->bytesToHtml(data, [](const QByteArray &d) {
             return DataHandler::bytesToAscii(d);
         });
+    } else if (mode == "MIXED") {
+        // MIXED mode: two lines with HEX: / ASCII: labels
+        QString hexStr = DataHandler::bytesToHex(data);
+        QString asciiStr = DataHandler::bytesToAscii(data);
+        QString arrowColor = (arrow == "<-") ? "#00AA00" : "#0000AA";
+        QString arrowTag = QStringLiteral("<span style=\"color:%1;font-weight:bold;\">%2</span>")
+                           .arg(arrowColor, arrow);
+        html = QStringLiteral("<span style=\"color:%1;\">[%2]</span><br>")
+               .arg(TIMESTAMP_COLOR, timestamp);
+        html += arrowTag + QStringLiteral(" HEX: <span style=\"color:%1;\">%2</span><br>")
+                .arg(DATA_COLOR, AnsiParser::escapeHtml(hexStr));
+        html += arrowTag + QStringLiteral(" ASCII: <span style=\"color:%1;\">%2</span>")
+                .arg(DATA_COLOR, AnsiParser::escapeHtml(asciiStr));
     } else {
         QString display = DataHandler::formatDisplay(data, mode);
         html += QStringLiteral("<span style=\"color:%1;\">%2</span>")
@@ -198,7 +212,7 @@ void ReceiveDisplayHandler::setupContextMenu(std::function<void()> toggleAnsiCal
     connect(m_textEdit, &QTextEdit::customContextMenuRequested,
             [this, toggleAnsiCallback](const QPoint &pos) {
         QMenu menu;
-        QAction *ansiAction = menu.addAction("ANSI Color Display");
+        QAction *ansiAction = menu.addAction(QStringLiteral("ANSI 颜色显示"));
         ansiAction->setCheckable(true);
         ansiAction->setChecked(m_displayAnsiFunc ? m_displayAnsiFunc() : false);
         connect(ansiAction, &QAction::triggered, [toggleAnsiCallback]() {
@@ -206,7 +220,11 @@ void ReceiveDisplayHandler::setupContextMenu(std::function<void()> toggleAnsiCal
         });
 
         menu.addSeparator();
-        menu.addAction("Clear", [this]() { m_textEdit->clear(); });
+        menu.addAction(QStringLiteral("清空"), [this]() {
+            m_textEdit->clear();
+            resetCounts();
+            emit countsChanged(0, 0);
+        });
 
         menu.exec(m_textEdit->viewport()->mapToGlobal(pos));
     });

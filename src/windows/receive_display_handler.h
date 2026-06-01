@@ -14,6 +14,9 @@
 class ReceiveDisplayHandler : public QObject {
     Q_OBJECT
 
+signals:
+    void countsChanged(qint64 sendCount, qint64 receiveCount);
+
 public:
     using DisplayModeFunc = std::function<QString()>;
     using DisplayAnsiFunc = std::function<bool()>;
@@ -71,8 +74,8 @@ private:
     qint64 m_sendCount = 0;
 
     // Display limits
-    static const int MAX_DISPLAY_LINES = 5000;
-    static const int DISPLAY_PRUNE_LINES = 2500;
+    static const int MAX_DISPLAY_LINES = 10000;
+    static const int DISPLAY_PRUNE_LINES = 5000;
     static const int MEMORY_CHECK_INTERVAL_MS = 10000; // 10 seconds
 
     // Colors
