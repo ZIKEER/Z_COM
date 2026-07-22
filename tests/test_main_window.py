@@ -118,6 +118,16 @@ class TestMainWindowActions:
             main_window._on_error("test error")
         critical.assert_called_once()
 
+    def test_repeated_errors_only_show_one_dialog(self, main_window):
+        with patch("src.windows.main_window.QMessageBox.critical") as critical:
+            main_window._on_error("first error")
+            main_window._on_error("second error")
+
+        critical.assert_called_once()
+        text = main_window.ui.receiveTextEdit.toPlainText()
+        assert "first error" in text
+        assert "second error" in text
+
 
 class TestMainWindowDataDisplay:
     def test_append_data_lines_increments_count(self, main_window):

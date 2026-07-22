@@ -1,6 +1,7 @@
 import sys
 import os
 import gc
+import time
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QFileDialog, QInputDialog
 from PySide6.QtCore import QTimer, QThread, Qt
 from PySide6.QtGui import QIcon
@@ -24,6 +25,7 @@ from src.io.socket_manager import SocketManager
 from src.build_info import BUILD_TIME
 
 MEMORY_RECOVER_INTERVAL_MS = 10000
+ERROR_DIALOG_COOLDOWN_SECONDS = 5.0
 
 
 class MainWindow(QMainWindow):
@@ -92,6 +94,8 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.timeout.connect(self.config_manager.save)
         self._preset_panel_last_width = 320
         self._jlink_scan_thread = None
+        self._error_dialog_open = False
+        self._last_error_dialog_time = float('-inf')
 
         self._init_ui()
         self._setup_connections()
@@ -451,7 +455,17 @@ class MainWindow(QMainWindow):
     def _on_error(self, error_msg):
         title = self._ERROR_TITLES.get(self.io_mode, '错误')
         self._display_handler.append_event(f"!!! {title}：{error_msg}", 'red')
-        QMessageBox.critical(self, '错误', f'{title}：{error_msg}')
+        now = time.monotonic()
+        if (self._error_dialog_open or
+                now - self._last_error_dialog_time < ERROR_DIALOG_COOLDOWN_SECONDS):
+            return
+
+        self._error_dialog_open = True
+        try:
+            QMessageBox.critical(self, '错误', f'{title}：{error_msg}')
+        finally:
+            self._error_dialog_open = False
+            self._last_error_dialog_time = time.monotonic()
 
     def _on_socket_client_event(self, event_type, addr):
         host, port = addr
