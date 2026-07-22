@@ -1,7 +1,31 @@
 import socket
 import select
 import threading
+import time
 from PySide6.QtCore import Signal, QThread
+
+
+def send_tcp_all(sock, data, timeout=5.0):
+    """完整发送 TCP 数据，兼容非阻塞 socket。"""
+    view = memoryview(data)
+    deadline = time.monotonic() + timeout
+    while view:
+        try:
+            sent = sock.send(view)
+        except BlockingIOError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("TCP 发送超时")
+            _, writable, _ = select.select([], [sock], [], remaining)
+            if not writable:
+                raise TimeoutError("TCP 发送超时")
+            continue
+        except InterruptedError:
+            continue
+
+        if sent <= 0:
+            raise ConnectionError("TCP 连接已关闭")
+        view = view[sent:]
 
 
 class SocketReaderThread(QThread):
@@ -37,25 +61,36 @@ class SocketReaderThread(QThread):
         with self._lock:
             if self._current_client is None:
                 return False
-            for fileno, (csock, addr) in self._clients.items():
-                if addr == self._current_client:
-                    try:
-                        csock.send(data)
-                        return True
-                    except Exception:
-                        return False
+            selected = next(
+                ((fileno, client_sock) for fileno, (client_sock, addr) in self._clients.items()
+                 if addr == self._current_client),
+                None,
+            )
+        if selected is None:
+            return False
+        fileno, csock = selected
+        try:
+            send_tcp_all(csock, data)
+            return True
+        except Exception:
+            with self._lock:
+                event = self._remove_client(fileno)
+            if event:
+                self.client_event.emit(*event)
             return False
 
     def send_to_all(self, data):
         pending_events = []
         with self._lock:
-            for fileno, (csock, addr) in list(self._clients.items()):
-                try:
-                    csock.send(data)
-                except Exception:
+            clients = list(self._clients.items())
+        for fileno, (csock, addr) in clients:
+            try:
+                send_tcp_all(csock, data)
+            except Exception:
+                with self._lock:
                     evt = self._remove_client(fileno)
-                    if evt:
-                        pending_events.append(evt)
+                if evt:
+                    pending_events.append(evt)
         for event_type, addr in pending_events:
             self.client_event.emit(event_type, addr)
 

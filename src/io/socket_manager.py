@@ -1,7 +1,7 @@
 import socket
 from PySide6.QtCore import Signal
 from src.io.io_transport import IOTransport
-from src.io.socket_reader import SocketReaderThread
+from src.io.socket_reader import SocketReaderThread, send_tcp_all
 
 
 def get_local_ips():
@@ -114,7 +114,7 @@ class SocketManager(IOTransport):
 
     def _send_bytes(self, data: bytes) -> bool:
         if self._mode == 'tcp_client':
-            self.sock.send(data)
+            send_tcp_all(self.sock, data)
         elif self._mode == 'tcp_server':
             if not self.reader_thread or not self.reader_thread.send_to_current(data):
                 self.error_occurred.emit("没有已连接的客户端")

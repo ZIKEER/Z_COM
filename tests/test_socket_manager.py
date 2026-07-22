@@ -4,6 +4,22 @@ import time
 from unittest.mock import MagicMock, patch
 
 import src.io.socket_manager as sock_mod
+from src.io.socket_reader import send_tcp_all
+
+
+def test_send_tcp_all_handles_partial_writes():
+    class ChunkedSocket:
+        def __init__(self):
+            self.received = bytearray()
+
+        def send(self, data):
+            chunk = bytes(data[:2])
+            self.received.extend(chunk)
+            return len(chunk)
+
+    sock = ChunkedSocket()
+    send_tcp_all(sock, b"abcdef")
+    assert bytes(sock.received) == b"abcdef"
 
 
 class TestGetLocalIps:
