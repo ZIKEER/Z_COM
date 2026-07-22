@@ -74,7 +74,11 @@ class AnsiParser:
         if not params_str:
             params = [0]
         else:
-            params = [int(p) if p else 0 for p in params_str.split(';')]
+            try:
+                params = [int(p) if p else 0 for p in params_str.split(';')]
+            except ValueError:
+                # 设备输出可能包含扩展或畸形 SGR 参数，忽略即可，不能中断接收链路。
+                return {}
         i = 0
         while i < len(params):
             p = params[i]
@@ -94,17 +98,19 @@ class AnsiParser:
                 styles['background'] = AnsiParser.FG_COLORS.get(p - 10)
             elif p == 38 and i + 2 < len(params):
                 if params[i + 1] == 5:
-                    i += 3
+                    i += 2
                 elif params[i + 1] == 2 and i + 4 < len(params):
                     r, g, b = params[i + 2], params[i + 3], params[i + 4]
-                    styles['color'] = f'#{r:02X}{g:02X}{b:02X}'
-                    i += 5
+                    if all(0 <= value <= 255 for value in (r, g, b)):
+                        styles['color'] = f'#{r:02X}{g:02X}{b:02X}'
+                    i += 4
             elif p == 48 and i + 2 < len(params):
                 if params[i + 1] == 5:
-                    i += 3
+                    i += 2
                 elif params[i + 1] == 2 and i + 4 < len(params):
                     r, g, b = params[i + 2], params[i + 3], params[i + 4]
-                    styles['background'] = f'#{r:02X}{g:02X}{b:02X}'
-                    i += 5
+                    if all(0 <= value <= 255 for value in (r, g, b)):
+                        styles['background'] = f'#{r:02X}{g:02X}{b:02X}'
+                    i += 4
             i += 1
         return styles if styles else {}

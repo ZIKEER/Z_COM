@@ -91,6 +91,15 @@ class TestBytesToHtml:
         assert "&lt;" in html
         assert "&gt;" in html
 
+    def test_malformed_sgr_does_not_raise(self):
+        html = parser.bytes_to_html(b"\x1B[1:mText", dummy_to_ascii)
+        assert html == "Text"
+
+    def test_truecolor_followed_by_bold(self):
+        html = parser.bytes_to_html(b"\x1B[38;2;255;128;0;1mText", dummy_to_ascii)
+        assert "#FF8000" in html
+        assert "bold" in html
+
 
 class TestParseSgr:
     def test_reset(self):
@@ -113,3 +122,10 @@ class TestParseSgr:
         result = AnsiParser._parse_sgr("1;31")
         assert result.get("bold") is True
         assert result.get("color") == "#C00000"
+
+    def test_malformed_parameter_is_ignored(self):
+        assert AnsiParser._parse_sgr("1:") == {}
+
+    def test_out_of_range_truecolor_is_ignored(self):
+        result = AnsiParser._parse_sgr("38;2;300;0;0")
+        assert "color" not in result
