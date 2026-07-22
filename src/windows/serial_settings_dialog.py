@@ -19,6 +19,7 @@ class SerialSettingsDialog(QDialog):
         super().__init__(parent)
         self.ui = Ui_SerialSettingsDialog()
         self.ui.setupUi(self)
+        self._rtt_reset = False
 
         self._init_ui()
 
@@ -96,7 +97,7 @@ class SerialSettingsDialog(QDialog):
         if 'speed' in settings:
             self.ui.rttSpeedSpinBox.setValue(int(settings['speed']))
         if 'reset' in settings:
-            self.ui.rttResetCheckBox.setChecked(settings['reset'])
+            self._rtt_reset = bool(settings['reset'])
         if 'start_address' in settings:
             self.ui.rttStartAddressLineEdit.setText(settings['start_address'])
         if 'range_size' in settings:
@@ -128,7 +129,7 @@ class SerialSettingsDialog(QDialog):
         return {
             'chip': self.ui.rttChipComboBox.currentText(),
             'speed': self.ui.rttSpeedSpinBox.value(),
-            'reset': self.ui.rttResetCheckBox.isChecked(),
+            'reset': self._rtt_reset,
             'start_address': self.ui.rttStartAddressLineEdit.text().strip(),
             'range_size': self.ui.rttRangeSizeLineEdit.text().strip(),
         }

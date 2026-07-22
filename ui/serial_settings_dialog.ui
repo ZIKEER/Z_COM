@@ -154,16 +154,6 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QCheckBox" name="jlinkCheckBox">
-        <property name="text">
-         <string>启用 J-Link/RTT 扫描</string>
-        </property>
-        <property name="toolTip">
-         <string>仅在本机安装 J-Link 驱动并连接探针时启用</string>
-        </property>
-       </widget>
-      </item>
      </layout>
     </widget>
    </item>
@@ -176,6 +166,16 @@
       <property name="spacing">
        <number>2</number>
       </property>
+      <item>
+       <widget class="QCheckBox" name="jlinkCheckBox">
+        <property name="text">
+         <string>启用 J-Link/RTT 扫描</string>
+        </property>
+        <property name="toolTip">
+         <string>仅在本机安装 J-Link 驱动并连接探针时启用</string>
+        </property>
+       </widget>
+      </item>
       <item>
         <layout class="QGridLayout" name="rttGridLayout">
           <property name="spacing">
@@ -210,7 +210,7 @@
         </item>
         <item row="1" column="1">
          <layout class="QHBoxLayout" name="rttSpeedLayout">
-          <item>
+         <item>
            <widget class="QSpinBox" name="rttSpeedSpinBox">
             <property name="minimum">
              <number>100</number>
@@ -223,16 +223,6 @@
             </property>
             <property name="suffix">
              <string> kHz</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="rttResetCheckBox">
-            <property name="text">
-             <string>连接时复位</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
             </property>
            </widget>
           </item>

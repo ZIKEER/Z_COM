@@ -147,6 +147,7 @@ class MainWindow(QMainWindow):
         self.ui.refreshButton.clicked.connect(self._refresh_ports)
         self.ui.settingsButton.clicked.connect(self._show_serial_settings)
         self.ui.baudrateCombo.currentTextChanged.connect(self._on_baudrate_changed)
+        self.ui.jlinkResetCheckBox.toggled.connect(self._on_jlink_reset_changed)
         self.ui.togglePresetButton.clicked.connect(self._toggle_preset_panel)
         self.ui.topSplitter.splitterMoved.connect(self._on_top_splitter_moved)
         self.ui.mainSplitter.splitterMoved.connect(self._on_main_splitter_moved)
@@ -338,6 +339,11 @@ class MainWindow(QMainWindow):
             self._refresh_ports()
         self.config_manager.save()
 
+    def _on_jlink_reset_changed(self, checked):
+        self.rtt_manager.update_settings({'reset': checked})
+        self.config_manager.set('rtt_reset', checked)
+        self._save_debounce_timer.start(500)
+
     # ── 连接控制 ──
 
     def _on_baudrate_changed(self, text):
@@ -356,7 +362,7 @@ class MainWindow(QMainWindow):
         if not port_data:
             return
         if port_data.startswith('SOCKET:'):
-            self.ui.baudrateStack.setCurrentIndex(1)
+            self.ui.baudrateStack.setCurrentWidget(self.ui.socketPage)
             is_server = 'Server' in port_data
             if is_server:
                 self.ui.ipCombo.clear()
@@ -368,11 +374,9 @@ class MainWindow(QMainWindow):
                 self.ui.ipCombo.setEditable(True)
                 self.ui.ipCombo.setPlaceholderText("输入目标 IP")
         elif port_data.startswith('JLINK:'):
-            self.ui.baudrateStack.setCurrentIndex(0)
-            self.ui.baudrateCombo.setEnabled(False)
+            self.ui.baudrateStack.setCurrentWidget(self.ui.jlinkPage)
         else:
-            self.ui.baudrateStack.setCurrentIndex(0)
-            self.ui.baudrateCombo.setEnabled(True)
+            self.ui.baudrateStack.setCurrentWidget(self.ui.baudratePage)
 
     def _toggle_serial(self):
         if self._io.is_connected:
@@ -670,6 +674,9 @@ class MainWindow(QMainWindow):
         self.ui.togglePresetAction.setChecked(preset_panel_visible)
 
         self.display_ansi = self.config_manager.get_bool('display_ansi', False)
+        self.ui.jlinkResetCheckBox.setChecked(
+            self.config_manager.get_bool('rtt_reset', False)
+        )
 
         saved_port = self.config_manager.get('port', '')
         self._refresh_ports(block_signals=True)

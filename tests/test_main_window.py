@@ -93,6 +93,16 @@ class TestMainWindowActions:
         assert main_window.ui.baudrateStack.currentIndex() == 0
         assert main_window.ui.baudrateCombo.isVisibleTo(main_window)
 
+    def test_jlink_uses_reset_page(self, main_window):
+        main_window.ui.portCombo.addItem("JLINK:SN=123", "JLINK:SN=123")
+        main_window.ui.portCombo.setCurrentIndex(main_window.ui.portCombo.count() - 1)
+        assert main_window.ui.baudrateStack.currentWidget() is main_window.ui.jlinkPage
+
+    def test_jlink_reset_is_persisted(self, main_window):
+        main_window.ui.jlinkResetCheckBox.setChecked(True)
+        assert main_window.config_manager.get("rtt_reset") is True
+        assert main_window.rtt_manager.settings["reset"] is True
+
     def test_display_mode_property(self, main_window):
         main_window.ui.hexRadio.setChecked(True)
         assert main_window._display_mode == "HEX"

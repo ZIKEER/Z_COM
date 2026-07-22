@@ -128,6 +128,22 @@ class Ui_MainWindow(object):
         self.socketPageLayout.addItem(self.socketPageSpacer)
 
         self.baudrateStack.addWidget(self.socketPage)
+        self.jlinkPage = QWidget()
+        self.jlinkPage.setObjectName(u"jlinkPage")
+        self.jlinkPageLayout = QHBoxLayout(self.jlinkPage)
+        self.jlinkPageLayout.setSpacing(6)
+        self.jlinkPageLayout.setObjectName(u"jlinkPageLayout")
+        self.jlinkPageLayout.setContentsMargins(0, 0, 0, 0)
+        self.jlinkResetCheckBox = QCheckBox(self.jlinkPage)
+        self.jlinkResetCheckBox.setObjectName(u"jlinkResetCheckBox")
+
+        self.jlinkPageLayout.addWidget(self.jlinkResetCheckBox)
+
+        self.jlinkPageSpacer = QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.jlinkPageLayout.addItem(self.jlinkPageSpacer)
+
+        self.baudrateStack.addWidget(self.jlinkPage)
 
         self.statusBarLayout.addWidget(self.baudrateStack)
 
@@ -354,6 +370,10 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(tooltip)
         self.portSpin.setToolTip(QCoreApplication.translate("MainWindow", u"\u76ee\u6807\u7aef\u53e3\u53f7", None))
 #endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        self.jlinkResetCheckBox.setToolTip(QCoreApplication.translate("MainWindow", u"\u8fde\u63a5\u76ee\u6807\u82af\u7247\u540e\u6267\u884c\u4e00\u6b21\u590d\u4f4d", None))
+#endif // QT_CONFIG(tooltip)
+        self.jlinkResetCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u8fde\u63a5\u540e\u590d\u4f4d", None))
         self.openButton.setText(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u7aef\u53e3", None))
         self.settingsButton.setText(QCoreApplication.translate("MainWindow", u"\u66f4\u591a\u8bbe\u7f6e", None))
         self.togglePresetButton.setText(QCoreApplication.translate("MainWindow", u"\u6269\u5c55\u53d1\u9001", None))

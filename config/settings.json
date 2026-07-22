@@ -11,7 +11,7 @@
   "auto_scroll": true,
   "auto_send_interval": 1000,
   "display_ansi": false,
-  "support_jlink": false,
+  "support_jlink": true,
   "rtt_chip": "",
   "rtt_speed": 4000,
   "rtt_reset": false,
