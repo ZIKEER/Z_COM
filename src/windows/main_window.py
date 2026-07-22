@@ -189,7 +189,10 @@ class MainWindow(QMainWindow):
 
     # ── 端口刷新 ──
 
-    def _refresh_ports(self, block_signals=False):
+    def _refresh_ports(self, block_signals=False, scan_rtt=None):
+        """刷新端口列表，按配置决定是否探测 J-Link。"""
+        if scan_rtt is None:
+            scan_rtt = self.config_manager.get_bool('support_jlink', False)
         current_port = self.ui.portCombo.currentData() if not block_signals else None
         if block_signals:
             self.ui.portCombo.blockSignals(True)
@@ -206,6 +209,24 @@ class MainWindow(QMainWindow):
 
         if block_signals:
             self.ui.portCombo.blockSignals(False)
+
+        if not scan_rtt:
+            socket_modes = [
+                ('SOCKET:TCP:Server', 'TCP Server'),
+                ('SOCKET:TCP:Client', 'TCP Client'),
+                ('SOCKET:UDP:Server', 'UDP Server'),
+                ('SOCKET:UDP:Client', 'UDP Client'),
+            ]
+            for key, display_text in socket_modes:
+                if self.ui.portCombo.findData(key) < 0:
+                    self.ui.portCombo.addItem(display_text, key)
+                    idx = self.ui.portCombo.count() - 1
+                    self.ui.portCombo.setItemData(idx, display_text, Qt.ToolTipRole)
+            if current_port is not None:
+                index = self.ui.portCombo.findData(current_port)
+                if index >= 0:
+                    self.ui.portCombo.setCurrentIndex(index)
+            return
 
         from PySide6.QtCore import Signal as QSignal
 
@@ -273,7 +294,8 @@ class MainWindow(QMainWindow):
     def _show_serial_settings(self):
         rtt_settings = self.config_manager.get_rtt_settings()
         dialog = SerialSettingsDialog(
-            self.serial_manager.settings, rtt_settings, self.display_ansi, self,
+            self.serial_manager.settings, rtt_settings, self.display_ansi,
+            self, support_jlink=self.config_manager.get_bool('support_jlink', False),
         )
         dialog.settings_changed.connect(self._on_serial_settings_changed)
         dialog.rtt_settings_changed.connect(self._on_rtt_settings_changed)
@@ -310,6 +332,10 @@ class MainWindow(QMainWindow):
         if 'display_ansi' in settings:
             self.display_ansi = settings['display_ansi']
             self.config_manager.set('display_ansi', self.display_ansi)
+        if 'support_jlink' in settings:
+            support_jlink = bool(settings['support_jlink'])
+            self.config_manager.set('support_jlink', support_jlink)
+            self._refresh_ports()
         self.config_manager.save()
 
     # ── 连接控制 ──

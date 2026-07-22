@@ -121,6 +121,11 @@ class Ui_SerialSettingsDialog(object):
 
         self.commonVBoxLayout.addWidget(self.ansiCheckBox)
 
+        self.jlinkCheckBox = QCheckBox(self.commonGroupBox)
+        self.jlinkCheckBox.setObjectName(u"jlinkCheckBox")
+
+        self.commonVBoxLayout.addWidget(self.jlinkCheckBox)
+
 
         self.verticalLayout.addWidget(self.commonGroupBox)
 
@@ -222,6 +227,10 @@ class Ui_SerialSettingsDialog(object):
         self.frameTimeoutSpinBox.setSuffix(QCoreApplication.translate("SerialSettingsDialog", u" ms", None))
         self.frameTimeoutHint.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u8bf4\u660e\uff1a\u8be5\u65f6\u95f4\u540c\u65f6\u7528\u4e8e\u9759\u9ed8\u5206\u5305\u548c\u8fde\u7eed\u6d41\u5237\u65b0\uff0c\u65f6\u95f4\u8d8a\u957f\u5408\u5e76\u8d8a\u591a\u3001\u5237\u65b0\u8d8a\u6162", None))
         self.ansiCheckBox.setText(QCoreApplication.translate("SerialSettingsDialog", u"ANSI\u989c\u8272\u663e\u793a", None))
+        self.jlinkCheckBox.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u542f\u7528 J-Link/RTT \u626b\u63cf", None))
+#if QT_CONFIG(tooltip)
+        self.jlinkCheckBox.setToolTip(QCoreApplication.translate("SerialSettingsDialog", u"\u4ec5\u5728\u672c\u673a\u5b89\u88c5 J-Link \u9a71\u52a8\u5e76\u8fde\u63a5\u63a2\u9488\u65f6\u542f\u7528", None))
+#endif // QT_CONFIG(tooltip)
         self.rttGroupBox.setTitle(QCoreApplication.translate("SerialSettingsDialog", u"RTT \u8bbe\u5907\u914d\u7f6e (J-Link)", None))
         self.rttChipLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"\u82af\u7247\u578b\u53f7\uff1a", None))
         self.rttSpeedLabel.setText(QCoreApplication.translate("SerialSettingsDialog", u"J-Link \u901f\u5ea6\uff1a", None))

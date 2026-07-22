@@ -154,6 +154,16 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QCheckBox" name="jlinkCheckBox">
+        <property name="text">
+         <string>启用 J-Link/RTT 扫描</string>
+        </property>
+        <property name="toolTip">
+         <string>仅在本机安装 J-Link 驱动并连接探针时启用</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

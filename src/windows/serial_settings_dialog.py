@@ -14,7 +14,8 @@ class SerialSettingsDialog(QDialog):
     rtt_settings_changed = Signal(dict)
     common_settings_changed = Signal(dict)
 
-    def __init__(self, current_settings=None, rtt_settings=None, display_ansi=False, parent=None):
+    def __init__(self, current_settings=None, rtt_settings=None, display_ansi=False,
+                 parent=None, support_jlink=False):
         super().__init__(parent)
         self.ui = Ui_SerialSettingsDialog()
         self.ui.setupUi(self)
@@ -27,6 +28,7 @@ class SerialSettingsDialog(QDialog):
             self._load_rtt_settings(rtt_settings)
 
         self.ui.ansiCheckBox.setChecked(display_ansi)
+        self.ui.jlinkCheckBox.setChecked(support_jlink)
 
     def _init_ui(self):
         """初始化界面"""
@@ -136,4 +138,5 @@ class SerialSettingsDialog(QDialog):
         return {
             'frame_timeout': self.ui.frameTimeoutSpinBox.value(),
             'display_ansi': self.ui.ansiCheckBox.isChecked(),
+            'support_jlink': self.ui.jlinkCheckBox.isChecked(),
         }

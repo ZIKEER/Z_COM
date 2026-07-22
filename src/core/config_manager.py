@@ -27,6 +27,7 @@ class ConfigManager:
             'auto_scroll': True,
             'auto_send_interval': 1000,
             'display_ansi': False,
+            'support_jlink': False,
             'rtt_chip': '',
             'rtt_speed': 4000,
             'rtt_reset': False,
