@@ -1,17 +1,19 @@
 import os
 import json
+from src.core.path_utils import get_app_base_path
 
 
 class ConfigManager:
     """配置管理类"""
     
-    def __init__(self, config_dir=None, instance_id=1):
+    def __init__(self, config_dir=None, instance_id=1, data_root=None):
         if config_dir:
-            self.config_dir = config_dir
-        elif instance_id > 1:
-            self.config_dir = os.path.join(f"instance_{instance_id}", "config")
+            self.config_dir = os.path.abspath(config_dir)
         else:
-            self.config_dir = "config"
+            base_dir = os.path.abspath(data_root) if data_root else get_app_base_path()
+            if instance_id > 1:
+                base_dir = os.path.join(base_dir, f"instance_{instance_id}")
+            self.config_dir = os.path.join(base_dir, "config")
         
         self.config_file = os.path.join(self.config_dir, "settings.json")
         self.default_config = {

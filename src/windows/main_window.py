@@ -28,7 +28,7 @@ MEMORY_RECOVER_INTERVAL_MS = 10000
 
 class MainWindow(QMainWindow):
 
-    def __init__(self, instance_id=1):
+    def __init__(self, instance_id=1, data_root=None):
         super().__init__()
         self.instance_id = instance_id
         self.ui = Ui_MainWindow()
@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         # 配置
-        self.config_manager = ConfigManager(instance_id=instance_id)
+        self.config_manager = ConfigManager(instance_id=instance_id, data_root=data_root)
 
         # IO 管理器
         self.serial_manager = SerialManager()
@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         self.socket_manager = SocketManager()
         self.data_handler = DataHandler()
         self.ansi_parser = AnsiParser()
-        self.logger = Logger(instance_id=instance_id)
+        self.logger = Logger(instance_id=instance_id, data_root=data_root)
 
         # 扩展发送（注入配置目录以支持多实例隔离）
         self.extended_send_manager = ExtendedSendManager(

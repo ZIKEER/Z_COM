@@ -1,6 +1,7 @@
 import os
 import threading
 from datetime import datetime
+from src.core.path_utils import get_app_base_path
 
 MAX_LOG_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 MAX_BUFFER_ENTRIES = 10000
@@ -10,13 +11,14 @@ class Logger:
     _global_counter = 0
     _counter_lock = threading.Lock()
 
-    def __init__(self, log_dir=None, instance_id=1):
+    def __init__(self, log_dir=None, instance_id=1, data_root=None):
         if log_dir:
-            self.log_dir = log_dir
-        elif instance_id > 1:
-            self.log_dir = os.path.join(f"instance_{instance_id}", "logs")
+            self.log_dir = os.path.abspath(log_dir)
         else:
-            self.log_dir = "logs"
+            base_dir = os.path.abspath(data_root) if data_root else get_app_base_path()
+            if instance_id > 1:
+                base_dir = os.path.join(base_dir, f"instance_{instance_id}")
+            self.log_dir = os.path.join(base_dir, "logs")
         os.makedirs(self.log_dir, exist_ok=True)
         self.current_log_file = ""
         self._buffer = []

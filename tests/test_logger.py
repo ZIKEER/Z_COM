@@ -19,6 +19,13 @@ def test_log_creates_file(tmp_path):
     assert files[0].endswith(".txt")
 
 
+def test_data_root_is_independent_of_working_directory(tmp_path, monkeypatch):
+    data_root = tmp_path / "app"
+    monkeypatch.chdir(tmp_path)
+    log = Logger(data_root=str(data_root))
+    assert log.log_dir == str(data_root / "logs")
+
+
 def _read_log(tmp_path):
     log_file = os.listdir(tmp_path)[0]
     with open(os.path.join(tmp_path, log_file), "r", encoding="utf-8") as f:

@@ -83,6 +83,19 @@ class TestConfigManager:
         cm1.save()
         assert cm2.get("baudrate") == "115200"
 
+    def test_data_root_is_independent_of_working_directory(self, tmp_path, monkeypatch):
+        data_root = tmp_path / "app"
+        monkeypatch.chdir(tmp_path)
+        cm = ConfigManager(data_root=str(data_root))
+        cm.set("baudrate", "9600")
+        cm.save()
+        assert cm.config_file == str(data_root / "config" / "settings.json")
+        assert os.path.exists(cm.config_file)
+
+    def test_instance_data_root(self, tmp_path):
+        cm = ConfigManager(instance_id=2, data_root=str(tmp_path))
+        assert cm.config_dir == str(tmp_path / "instance_2" / "config")
+
     def test_load_failure_uses_defaults(self, tmp_config_dir):
         config_file = os.path.join(tmp_config_dir, "settings.json")
         os.makedirs(tmp_config_dir, exist_ok=True)

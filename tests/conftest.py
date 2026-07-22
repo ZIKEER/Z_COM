@@ -37,7 +37,7 @@ def config_manager(tmp_config_dir):
 
 
 @pytest.fixture
-def extended_send_manager(mock_send_func):
-    mgr = ExtendedSendManager(mock_send_func)
+def extended_send_manager(mock_send_func, tmp_config_dir):
+    mgr = ExtendedSendManager(mock_send_func, config_dir=tmp_config_dir)
     mgr.items = []
     return mgr

@@ -1,6 +1,7 @@
 import os
 import json
 from PySide6.QtCore import QObject, Signal, QTimer
+from src.core.path_utils import get_app_base_path
 
 
 def decode_ascii_escapes(text):
@@ -95,8 +96,8 @@ class ExtendedSendManager(QObject):
 
         # 配置文件路径（支持外部注入，多实例隔离）
         if config_dir is None:
-            config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
-        self.config_dir = config_dir
+            config_dir = os.path.join(get_app_base_path(), "config")
+        self.config_dir = os.path.abspath(config_dir)
         self.config_file = os.path.join(self.config_dir, "extended_send.json")
         
         self._save_debounce_timer = QTimer()
