@@ -24,14 +24,23 @@ class Logger:
         self._buffer = []
         self._dropped_entries = 0
         self._lock = threading.Lock()
+        self._flush_lock = threading.Lock()
+        self._write_failed = False
         self._update_log_file()
 
-    def _append_entry_locked(self, entry):
-        self._buffer.append(entry)
-        overflow = len(self._buffer) - MAX_BUFFER_ENTRIES
-        if overflow > 0:
-            del self._buffer[:overflow]
-            self._dropped_entries += overflow
+    def _append_entry(self, entry):
+        with self._lock:
+            self._buffer.append(entry)
+            if self._write_failed:
+                overflow = len(self._buffer) - MAX_BUFFER_ENTRIES
+                if overflow > 0:
+                    del self._buffer[:overflow]
+                    self._dropped_entries += overflow
+                should_flush = False
+            else:
+                should_flush = len(self._buffer) >= MAX_BUFFER_ENTRIES
+        if should_flush:
+            self.flush()
 
     def _build_drop_notice(self, dropped):
         if dropped <= 0:
@@ -58,40 +67,43 @@ class Logger:
     def log(self, timestamp, direction, hex_str, ascii_str):
         arrow = "←" if direction == "RECEIVE" else "→"
         entry = f"[{timestamp}]\n {arrow} HEX: {hex_str}\n {arrow} ASCII: {ascii_str}\n"
-        with self._lock:
-            self._append_entry_locked(entry)
+        self._append_entry(entry)
 
     def log_event(self, text):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         entry = f"[{timestamp}] {text}\n"
-        with self._lock:
-            self._append_entry_locked(entry)
+        self._append_entry(entry)
 
     def flush(self):
-        with self._lock:
-            if not self._buffer:
-                return
-            dropped_entries = self._dropped_entries
-            self._dropped_entries = 0
-            drop_notice = self._build_drop_notice(dropped_entries)
-            data = ''.join(self._buffer)
-            self._buffer.clear()
-        try:
-            with open(self.current_log_file, 'a', encoding='utf-8') as f:
-                if drop_notice:
-                    f.write(drop_notice)
-                f.write(data)
-            try:
-                if os.path.getsize(self.current_log_file) >= MAX_LOG_FILE_SIZE:
-                    self._rotate_log_file()
-            except OSError:
-                pass
-        except Exception as e:
+        with self._flush_lock:
             with self._lock:
-                self._dropped_entries += dropped_entries
-                self._buffer.insert(0, data)
-                overflow = len(self._buffer) - MAX_BUFFER_ENTRIES
-                if overflow > 0:
-                    del self._buffer[:overflow]
-                    self._dropped_entries += overflow
-            print(f"日志写入失败: {e}")
+                if not self._buffer:
+                    return
+                entries = self._buffer
+                self._buffer = []
+                dropped_entries = self._dropped_entries
+                self._dropped_entries = 0
+            drop_notice = self._build_drop_notice(dropped_entries)
+            data = ''.join(entries)
+            try:
+                with open(self.current_log_file, 'a', encoding='utf-8') as f:
+                    if drop_notice:
+                        f.write(drop_notice)
+                    f.write(data)
+                with self._lock:
+                    self._write_failed = False
+                try:
+                    if os.path.getsize(self.current_log_file) >= MAX_LOG_FILE_SIZE:
+                        self._rotate_log_file()
+                except OSError:
+                    pass
+            except Exception as e:
+                with self._lock:
+                    self._write_failed = True
+                    self._dropped_entries += dropped_entries
+                    self._buffer = entries + self._buffer
+                    overflow = len(self._buffer) - MAX_BUFFER_ENTRIES
+                    if overflow > 0:
+                        del self._buffer[:overflow]
+                        self._dropped_entries += overflow
+                print(f"日志写入失败: {e}")

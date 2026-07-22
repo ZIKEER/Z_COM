@@ -1,5 +1,7 @@
 import os
 import pytest
+from unittest.mock import patch
+import src.core.logger as logger_module
 from src.core.logger import Logger, MAX_LOG_FILE_SIZE
 
 
@@ -93,6 +95,37 @@ def test_log_event(tmp_path):
     assert "软件启动 Z_COM V1.0.0" in content
     assert "已连接 COM3" in content
     assert "[" in content  # timestamp bracket
+
+
+def test_buffer_threshold_flushes_without_dropping(tmp_path, monkeypatch):
+    monkeypatch.setattr(logger_module, "MAX_BUFFER_ENTRIES", 3)
+    log = Logger(log_dir=str(tmp_path))
+    for index in range(3):
+        log.log_event(f"entry-{index}")
+
+    assert log._buffer == []
+    assert log._dropped_entries == 0
+    content = _read_log(tmp_path)
+    for index in range(3):
+        assert f"entry-{index}" in content
+
+
+def test_write_failure_caps_entries_and_recovers(tmp_path, monkeypatch):
+    monkeypatch.setattr(logger_module, "MAX_BUFFER_ENTRIES", 3)
+    log = Logger(log_dir=str(tmp_path))
+    with patch("builtins.open", side_effect=OSError("disk unavailable")):
+        for index in range(4):
+            log.log_event(f"entry-{index}")
+
+    assert len(log._buffer) == 3
+    assert log._dropped_entries == 1
+
+    log.flush()
+    content = _read_log(tmp_path)
+    assert "已丢失 1 条" in content
+    assert "entry-0" not in content
+    for index in range(1, 4):
+        assert f"entry-{index}" in content
 
 
 def test_new_file_on_init(tmp_path):
