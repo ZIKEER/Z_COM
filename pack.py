@@ -16,6 +16,12 @@ def get_version():
     return VERSION
 
 
+def make_add_data_arg(root_dir, source_dir, target_dir):
+    """生成跨平台的 PyInstaller --add-data 参数值。"""
+    source_path = os.path.join(root_dir, source_dir)
+    return f"{source_path}{os.pathsep}{target_dir}"
+
+
 def clean_build():
     """清理构建文件"""
     # 清理 build 目录
@@ -113,9 +119,9 @@ def build():
         "--workpath", "build",
         "--specpath", "build",
         # 添加数据文件（使用绝对路径以兼容 specpath）
-        "--add-data", f"{root_dir}/config;config",
-        "--add-data", f"{root_dir}/resources;resources",
-        "--add-data", f"{root_dir}/ui;ui",
+        "--add-data", make_add_data_arg(root_dir, "config", "config"),
+        "--add-data", make_add_data_arg(root_dir, "resources", "resources"),
+        "--add-data", make_add_data_arg(root_dir, "ui", "ui"),
         # 添加隐式导入
         "--hidden-import", "serial",
         "--hidden-import", "serial.tools",
