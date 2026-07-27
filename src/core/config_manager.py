@@ -1,5 +1,6 @@
 import os
 import json
+from src.core.file_utils import atomic_write_json
 from src.core.path_utils import get_app_base_path
 
 
@@ -119,9 +120,7 @@ class ConfigManager:
     def _save_config(self):
         """保存配置"""
         try:
-            os.makedirs(self.config_dir, exist_ok=True)
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, ensure_ascii=False, indent=2)
+            atomic_write_json(self.config_file, self.config)
         except Exception as e:
             print(f"保存配置失败: {e}")
     
