@@ -1,4 +1,5 @@
 """版本信息配置"""
+import sys
 
 # 软件版本号
 VERSION = "0.0.11"
@@ -13,7 +14,7 @@ APP_DESCRIPTION = "基于 PySide6 开发的串口调试工具"
 from src.build_info import BUILD_TIME
 
 # 文件信息
-FILE_NAME = f"Z_COM_{VERSION_NAME}.exe"
+FILE_NAME = f"Z_COM_{VERSION_NAME}{'.exe' if sys.platform == 'win32' else ''}"
 DIST_DIR = f"dist/Z_COM_{VERSION_NAME}"
 
 # 图标路径

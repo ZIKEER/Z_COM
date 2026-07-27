@@ -1,5 +1,6 @@
 """Z_COM 打包脚本 - 使用 PyInstaller"""
 import os
+import platform
 import sys
 import shutil
 import subprocess
@@ -22,19 +23,48 @@ def make_add_data_arg(root_dir, source_dir, target_dir):
     return f"{source_path}{os.pathsep}{target_dir}"
 
 
-def clean_build():
+def get_executable_name(app_name):
+    return f"{app_name}.exe" if sys.platform == "win32" else app_name
+
+
+def get_platform_tag():
+    """返回用于隔离不同平台产物的稳定目录名。"""
+    machine = platform.machine().lower() or "unknown"
+    machine = {
+        "amd64": "x86_64",
+        "aarch64": "arm64",
+    }.get(machine, machine)
+
+    if sys.platform.startswith("linux"):
+        system = "linux"
+    elif sys.platform == "darwin":
+        system = "macos"
+    else:
+        system = sys.platform.replace("/", "-")
+    return f"{system}-{machine}"
+
+
+def get_build_paths(app_name):
+    """Windows 保持原目录结构，其他平台按系统和架构隔离。"""
+    if sys.platform == "win32":
+        dist_root = "dist"
+        build_root = "build"
+    else:
+        platform_tag = get_platform_tag()
+        dist_root = os.path.join("dist", platform_tag)
+        build_root = os.path.join("build", platform_tag)
+    return dist_root, build_root, os.path.join(dist_root, app_name)
+
+
+def clean_build(build_root, dist_dir):
     """清理构建文件"""
-    # 清理 build 目录
-    if os.path.isdir("build"):
-        shutil.rmtree("build")
-        print("  已删除: build")
-    
-    # 只清理当前版本的 dist 目录，保留其他版本
-    version_name = f"V{VERSION}"
-    current_dist = f"dist/Z_COM_{version_name}"
-    if os.path.isdir(current_dist):
-        shutil.rmtree(current_dist)
-        print(f"  已删除: {current_dist}")
+    if os.path.isdir(build_root):
+        shutil.rmtree(build_root)
+        print(f"  已删除: {build_root}")
+
+    if os.path.isdir(dist_dir):
+        shutil.rmtree(dist_dir)
+        print(f"  已删除: {dist_dir}")
 
 
 def create_icon():
@@ -79,7 +109,7 @@ def build():
     version = get_version()
     version_name = f"V{version}"
     app_name = f"Z_COM_{version_name}"
-    dist_dir = f"dist/{app_name}"
+    dist_root, build_root, dist_dir = get_build_paths(app_name)
     build_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     print()
@@ -98,7 +128,7 @@ def build():
     
     # 清理旧文件
     print("[信息] 清理旧的构建文件...")
-    clean_build()
+    clean_build(build_root, dist_dir)
     
     # 检查/生成图标
     has_icon = create_icon()
@@ -115,9 +145,9 @@ def build():
         "--clean",
         "--noconsole",  # 不显示命令行窗口
         "--name", app_name,
-        "--distpath", "dist",
-        "--workpath", "build",
-        "--specpath", "build",
+        "--distpath", dist_root,
+        "--workpath", build_root,
+        "--specpath", build_root,
         # 添加数据文件（使用绝对路径以兼容 specpath）
         "--add-data", make_add_data_arg(root_dir, "config", "config"),
         "--add-data", make_add_data_arg(root_dir, "resources", "resources"),
@@ -150,7 +180,7 @@ def build():
     ]
     
     # 添加图标参数
-    if has_icon and os.path.exists(ICON_PATH):
+    if sys.platform == "win32" and has_icon and os.path.exists(ICON_PATH):
         pyinstaller_args.extend(["--icon", os.path.join(root_dir, ICON_PATH)])
     
     # 执行打包
@@ -159,11 +189,6 @@ def build():
         
         if result.returncode == 0:
             # 重命名输出目录
-            if os.path.exists(f"dist/{app_name}") and dist_dir != f"dist/{app_name}":
-                if os.path.exists(dist_dir):
-                    shutil.rmtree(dist_dir)
-                os.rename(f"dist/{app_name}", dist_dir)
-            
             # 删除未使用的 Qt 文件
             print("[信息] 删除未使用的 Qt 文件以减小体积...")
             remove_unnecessary_files(dist_dir)
@@ -199,7 +224,7 @@ def remove_unnecessary_files(dist_dir):
     unneeded = {
         "qt6pdf.dll", "qt6network.dll", "qt6svg.dll", "qt6svgwidgets.dll",
         "libcrypto-3.dll", "libssl-3.dll",
-        "QtNetwork.pyd", "QtSvg.pyd", "QtSvgWidgets.pyd",
+        "qtnetwork.pyd", "qtsvg.pyd", "qtsvgwidgets.pyd",
         "qjpeg.dll", "qwebp.dll", "qtiff.dll", "qicns.dll",
         "qtga.dll", "qwbmp.dll", "qsvg.dll", "qsvgicon.dll",
     }
@@ -209,7 +234,7 @@ def remove_unnecessary_files(dist_dir):
     for file in d.rglob("*"):
         if not file.is_file():
             continue
-        if file.name in unneeded:
+        if file.name.lower() in unneeded:
             sz = file.stat().st_size
             file.unlink()
             deleted_count += 1
@@ -224,7 +249,7 @@ def remove_unnecessary_files(dist_dir):
 
 def show_result(dist_dir, app_name):
     """显示打包结果"""
-    exe_path = os.path.join(dist_dir, f"{app_name}.exe")
+    exe_path = os.path.join(dist_dir, get_executable_name(app_name))
     
     print()
     print("=" * 50)
@@ -254,7 +279,7 @@ def show_result(dist_dir, app_name):
     
     # 打开输出目录
     try:
-        if os.path.exists(dist_dir):
+        if os.path.exists(dist_dir) and os.environ.get("Z_COM_NO_OPEN") != "1":
             abs_dist_dir = os.path.abspath(dist_dir)
             if sys.platform == "win32":
                 os.startfile(abs_dist_dir)

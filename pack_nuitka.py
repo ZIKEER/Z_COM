@@ -17,6 +17,10 @@ def get_version():
     return VERSION
 
 
+def get_executable_name(app_name):
+    return f"{app_name}.exe" if sys.platform == "win32" else app_name
+
+
 def clean_build(version=""):
     """清理构建临时文件与当前版本的输出目录（保留其它版本）"""
     # 清理 Nuitka 编译缓存
@@ -133,14 +137,17 @@ def remove_unnecessary_files(dist_dir):
     }
     # 保留: qico.dll, qgif.dll, qpdf.dll (体积均 < 1 KB)
 
+    unneeded_names = {
+        name.lower()
+        for name in unneeded_dlls | unneeded_pyds | unneeded_image_plugins
+    }
     deleted_count = 0
     deleted_size = 0
 
     for file in d.rglob("*"):
         if not file.is_file():
             continue
-        name = file.name
-        if name in unneeded_dlls or name in unneeded_pyds or name in unneeded_image_plugins:
+        if file.name.lower() in unneeded_names:
             sz = file.stat().st_size
             file.unlink()
             deleted_count += 1
@@ -187,17 +194,23 @@ def build():
     print()
     
     # 构建 Nuitka 参数
+    platform_args = []
+    if sys.platform == "win32":
+        platform_args = [
+            "--windows-console-mode=disable",
+            "--company-name=Z_COM",
+            f"--product-name={APP_NAME}",
+            f"--file-version={version}",
+            f"--product-version={version}",
+        ]
+
     nuitka_args = [
         sys.executable, "-m", "nuitka",
         "--standalone",  # 独立模式（非单文件，输出目录）
-        "--windows-console-mode=disable",  # 不显示命令行窗口
         "--enable-plugin=pyside6",  # 启用 PySide6 插件
-        f"--output-filename={app_name}.exe",
+        *platform_args,
+        f"--output-filename={get_executable_name(app_name)}",
         f"--output-dir=dist_nuitka",
-        "--company-name=Z_COM",
-        f"--product-name={APP_NAME}",
-        f"--file-version={version}",
-        f"--product-version={version}",
         # 包含数据文件
         "--include-data-dir=config=config",
         "--include-data-dir=resources=resources",
@@ -232,7 +245,7 @@ def build():
     ]
     
     # 添加图标参数
-    if has_icon and os.path.exists(ICON_PATH):
+    if sys.platform == "win32" and has_icon and os.path.exists(ICON_PATH):
         nuitka_args.extend([f"--windows-icon-from-ico={ICON_PATH}"])
     
     # 执行打包
@@ -284,7 +297,7 @@ def build():
 
 def show_result(dist_dir, app_name):
     """显示打包结果"""
-    exe_path = os.path.join(dist_dir, f"{app_name}.exe")
+    exe_path = os.path.join(dist_dir, get_executable_name(app_name))
     
     print()
     print("=" * 50)
