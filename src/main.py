@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 from src.core.path_utils import get_resource_path
+from src.core.qt_platform import configure_qt_platform
 from src.windows.main_window import MainWindow
 from src.version import ICON_PATH, APP_NAME
 
@@ -54,6 +55,8 @@ def set_windows_app_id(instance_id):
 
 
 def main():
+    configure_qt_platform()
+
     # 自动检测实例号
     instance_id = get_instance_id()
     print(f"[启动] 实例号: {instance_id}")

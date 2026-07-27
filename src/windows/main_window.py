@@ -35,6 +35,14 @@ class MainWindow(QMainWindow):
         self.instance_id = instance_id
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowTitleHint
+            | Qt.WindowSystemMenuHint
+            | Qt.WindowMinimizeButtonHint
+            | Qt.WindowMaximizeButtonHint
+            | Qt.WindowCloseButtonHint
+        )
 
         title = f"{APP_NAME} V{VERSION}"
         if instance_id > 1:
