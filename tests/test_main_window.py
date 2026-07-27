@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 @pytest.fixture
@@ -180,3 +180,30 @@ class TestMainWindowCleanup:
         win.close()
 
         assert win._jlink_scan_thread is None
+
+    def test_running_jlink_scan_is_kept_when_stop_times_out(self, main_window):
+        thread = MagicMock()
+        thread.isRunning.return_value = True
+        thread.wait.return_value = False
+        main_window._jlink_scan_thread = thread
+
+        assert main_window._cleanup_jlink_scan_thread() is False
+        thread.requestInterruption.assert_called_once_with()
+        thread.wait.assert_called_once_with(1000)
+        thread.deleteLater.assert_not_called()
+        assert main_window._jlink_scan_thread is thread
+
+        main_window._jlink_scan_thread = None
+
+    def test_old_jlink_finished_signal_does_not_delete_new_thread(self, main_window):
+        old_thread = MagicMock()
+        new_thread = MagicMock()
+        main_window._jlink_scan_thread = new_thread
+
+        main_window._on_jlink_scan_thread_finished(old_thread)
+
+        old_thread.deleteLater.assert_not_called()
+        new_thread.deleteLater.assert_not_called()
+        assert main_window._jlink_scan_thread is new_thread
+
+        main_window._jlink_scan_thread = None

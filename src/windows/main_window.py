@@ -242,13 +242,18 @@ class MainWindow(QMainWindow):
                 self.rtt_mgr = rtt_mgr
             def run(self):
                 devs = self.rtt_mgr.get_available_devices()
-                self.scan_finished.emit(devs)
+                if not self.isInterruptionRequested():
+                    self.scan_finished.emit(devs)
 
-        self._cleanup_jlink_scan_thread()
-        self._jlink_scan_thread = JLinkScanThread(self.rtt_manager)
-        self._jlink_scan_thread.scan_finished.connect(self._on_jlink_scan_finished)
-        self._jlink_scan_thread.finished.connect(self._on_jlink_scan_thread_finished)
-        self._jlink_scan_thread.start()
+        if not self._cleanup_jlink_scan_thread():
+            return
+        thread = JLinkScanThread(self.rtt_manager)
+        self._jlink_scan_thread = thread
+        thread.scan_finished.connect(self._on_jlink_scan_finished)
+        thread.finished.connect(
+            lambda finished_thread=thread: self._on_jlink_scan_thread_finished(finished_thread)
+        )
+        thread.start()
 
         socket_modes = [
             ('SOCKET:TCP:Server', 'TCP Server'),
@@ -282,17 +287,23 @@ class MainWindow(QMainWindow):
                 self.ui.portCombo.setItemData(insert_pos, display_text, Qt.ToolTipRole)
                 insert_pos += 1
 
-    def _on_jlink_scan_thread_finished(self):
-        if self._jlink_scan_thread:
-            self._jlink_scan_thread.deleteLater()
+    def _on_jlink_scan_thread_finished(self, finished_thread):
+        if self._jlink_scan_thread is finished_thread:
+            finished_thread.deleteLater()
             self._jlink_scan_thread = None
 
     def _cleanup_jlink_scan_thread(self):
-        if self._jlink_scan_thread and self._jlink_scan_thread.isRunning():
-            self._jlink_scan_thread.wait(1000)
-        if self._jlink_scan_thread:
-            self._jlink_scan_thread.deleteLater()
+        thread = self._jlink_scan_thread
+        if thread is None:
+            return True
+        if thread.isRunning():
+            thread.requestInterruption()
+            if not thread.wait(1000):
+                return False
+        if self._jlink_scan_thread is thread:
+            thread.deleteLater()
             self._jlink_scan_thread = None
+        return True
 
     # ── 设置对话框 ──
 
@@ -743,6 +754,10 @@ class MainWindow(QMainWindow):
         self._save_debounce_timer.start(500)
 
     def closeEvent(self, event):
+        if not self._cleanup_jlink_scan_thread():
+            QMessageBox.information(self, '正在扫描', 'J-Link 扫描尚未结束，请稍后再退出。')
+            event.ignore()
+            return
         self.auto_send_timer.stop()
         self._memory_recover_timer.stop()
         self._log_flush_timer.stop()
@@ -750,7 +765,6 @@ class MainWindow(QMainWindow):
         self._display_handler.stop_timers()
         self.extended_send_manager.stop_sending()
         self.extended_send_manager.stop_timers()
-        self._cleanup_jlink_scan_thread()
         self._save_config()
         if self._io.is_connected:
             self._io.close_connection()
