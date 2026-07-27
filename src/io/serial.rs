@@ -37,9 +37,21 @@ impl IOTransport for SerialTransport {
     }
     fn is_connected(&self) -> bool { self.port.is_some() }
     fn device_list(&self) -> Vec<DeviceEntry> {
-        available_ports().unwrap_or_default().iter().map(|p| DeviceEntry {
-            id: p.port_name.clone(),
-            display: format!("{} - {:?}", p.port_name, p.port_type)
+        available_ports().unwrap_or_default().iter().map(|p| {
+            let desc = match &p.port_type {
+                serialport::SerialPortType::UsbPort(info) => {
+                    info.product.clone().unwrap_or_else(|| {
+                        info.manufacturer.clone().unwrap_or_else(|| "USB Device".to_string())
+                    })
+                }
+                serialport::SerialPortType::BluetoothPort => "Bluetooth".to_string(),
+                serialport::SerialPortType::PciPort => "PCI".to_string(),
+                serialport::SerialPortType::Unknown => "Unknown".to_string(),
+            };
+            DeviceEntry {
+                id: p.port_name.clone(),
+                display: format!("{} - {}", p.port_name, desc),
+            }
         }).collect()
     }
     fn set_frame_timeout(&mut self, ms: u32) { self.frame_timeout = Duration::from_millis(ms as u64); }

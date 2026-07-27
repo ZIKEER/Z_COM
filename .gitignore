@@ -1,4 +1,5 @@
 /target
+/config/
 *.swp
 *.swo
 *~
