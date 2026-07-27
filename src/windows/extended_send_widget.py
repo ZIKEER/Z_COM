@@ -197,6 +197,9 @@ class ExtendedSendWidget(QWidget):
         self.manager = extended_send_manager
         self.ui = Ui_ExtendedSendWidget()
         self.ui.setupUi(self)
+        self._single_loop_timer = QTimer(self)
+        self._single_loop_timer.setSingleShot(True)
+        self._single_loop_timer.timeout.connect(self._send_loop_single)
         
         # 操作模式：normal, delete, move
         self.operation_mode = "normal"
@@ -518,6 +521,7 @@ class ExtendedSendWidget(QWidget):
         """启动发送按钮点击"""
         if self.manager.is_sending:
             # 当前正在发送，停止发送
+            self._single_loop_timer.stop()
             self.manager.stop_sending()
             self._update_send_button_state()
             return
@@ -552,6 +556,7 @@ class ExtendedSendWidget(QWidget):
     
     def _start_loop_single(self, item):
         """开始循环发送单条"""
+        self._single_loop_timer.stop()
         self.manager.is_sending = True
         self.manager.is_looping = True
         self._loop_single_item = item
@@ -573,7 +578,7 @@ class ExtendedSendWidget(QWidget):
             return
 
         delay = max(self._loop_single_item.get('delay', 1000), 1)
-        QTimer.singleShot(delay, self._send_loop_single)
+        self._single_loop_timer.start(delay)
     
     def _get_first_ordered_item(self):
         """获取序号最小的条目（序号>0）"""

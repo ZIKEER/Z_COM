@@ -201,3 +201,23 @@ class TestExtendedSendWidget:
             widget._show_main_context_menu(widget.rect().center())
 
         assert "发送选中" not in captured["texts"]
+
+    def test_stopped_single_loop_timer_cannot_restart_new_item(
+        self, qapp, qtbot, extended_send_manager
+    ):
+        from src.windows.extended_send_widget import ExtendedSendWidget
+
+        widget = ExtendedSendWidget(extended_send_manager)
+        sent = []
+        extended_send_manager.data_sent.connect(sent.append)
+        first = extended_send_manager.add_item("A", is_hex=False, delay=20)
+        second = extended_send_manager.add_item("B", is_hex=False, delay=200)
+
+        widget._start_loop_single(first)
+        widget._on_start_send_clicked()
+        widget._start_loop_single(second)
+        qtbot.wait(50)
+
+        assert sent == [b"A", b"B"]
+        widget._single_loop_timer.stop()
+        extended_send_manager.stop_sending()
