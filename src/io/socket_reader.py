@@ -5,7 +5,10 @@ import time
 from PySide6.QtCore import Signal, QThread
 
 
-def send_tcp_all(sock, data, timeout=5.0):
+TCP_SEND_TIMEOUT_SECONDS = 0.1
+
+
+def send_tcp_all(sock, data, timeout=TCP_SEND_TIMEOUT_SECONDS):
     """完整发送 TCP 数据，兼容非阻塞 socket。"""
     view = memoryview(data)
     deadline = time.monotonic() + timeout
@@ -45,6 +48,7 @@ class SocketReaderThread(QThread):
         self._current_client = None
         # tcp_server: {fileno: (client_sock, (host, port))}
         self._clients = {}
+        self._udp_clients = set()
         self.set_frame_timeout(frame_timeout)
 
     def set_frame_timeout(self, frame_timeout):
@@ -172,7 +176,8 @@ class SocketReaderThread(QThread):
                         if data:
                             self._current_client = addr
                             self.data_received.emit(bytes(data))
-                            if self._mode == 'udp_server':
+                            if self._mode == 'udp_server' and addr not in self._udp_clients:
+                                self._udp_clients.add(addr)
                                 self.client_event.emit('connected', addr)
 
                 else:
@@ -197,5 +202,6 @@ class SocketReaderThread(QThread):
                 except Exception:
                     pass
             self._clients.clear()
+            self._udp_clients.clear()
             self._current_client = None
         self.wait(1000)

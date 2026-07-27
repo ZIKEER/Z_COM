@@ -4,7 +4,11 @@ import time
 from unittest.mock import MagicMock, patch
 
 import src.io.socket_manager as sock_mod
-from src.io.socket_reader import send_tcp_all
+from src.io.socket_reader import (
+    TCP_SEND_TIMEOUT_SECONDS,
+    SocketReaderThread,
+    send_tcp_all,
+)
 
 
 def test_send_tcp_all_handles_partial_writes():
@@ -20,6 +24,10 @@ def test_send_tcp_all_handles_partial_writes():
     sock = ChunkedSocket()
     send_tcp_all(sock, b"abcdef")
     assert bytes(sock.received) == b"abcdef"
+
+
+def test_tcp_send_timeout_is_bounded():
+    assert TCP_SEND_TIMEOUT_SECONDS <= 0.1
 
 
 class TestGetLocalIps:
@@ -175,6 +183,27 @@ class TestSocketLoopback:
 
         client_sock.close()
         server.close_connection()
+
+    def test_udp_client_connected_event_is_emitted_once(self, qapp, qtbot):
+        server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        server_sock.bind(("127.0.0.1", 0))
+        thread = SocketReaderThread(server_sock, "udp_server")
+        events = []
+        thread.client_event.connect(lambda event_type, addr: events.append((event_type, addr)))
+        thread.start()
+
+        client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            destination = server_sock.getsockname()
+            client_sock.sendto(b"one", destination)
+            client_sock.sendto(b"two", destination)
+            qtbot.waitUntil(lambda: len(events) >= 1, timeout=2000)
+            qtbot.wait(100)
+            assert [event_type for event_type, _addr in events] == ["connected"]
+        finally:
+            client_sock.close()
+            thread.stop()
+            server_sock.close()
 
     def test_tcp_client_send(self, qapp, qtbot):
         from src.io.socket_manager import SocketManager
