@@ -1,6 +1,11 @@
 import re
+import time
 from src.io.io_transport import IOTransport
 from src.io.rtt_reader import RttReaderThread
+
+
+RTT_WRITE_TIMEOUT_SECONDS = 0.1
+RTT_WRITE_RETRY_INTERVAL_SECONDS = 0.001
 
 
 class RttManager(IOTransport):
@@ -154,8 +159,18 @@ class RttManager(IOTransport):
         self.jlink = None
 
     def _send_bytes(self, data: bytes) -> bool:
-        write_data = list(data)
-        self.jlink.rtt_write(0, write_data)
+        offset = 0
+        deadline = time.monotonic() + RTT_WRITE_TIMEOUT_SECONDS
+        while offset < len(data):
+            written = self.jlink.rtt_write(0, list(data[offset:]))
+            if not isinstance(written, int) or written < 0 or written > len(data) - offset:
+                raise RuntimeError(f"RTT 返回了无效的写入长度: {written}")
+            if written == 0:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("RTT 写入超时，目标缓冲区可能已满")
+                time.sleep(RTT_WRITE_RETRY_INTERVAL_SECONDS)
+                continue
+            offset += written
         return True
 
     def get_serial_number(self):

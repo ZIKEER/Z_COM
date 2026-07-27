@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 def _make_mock_jlink():
     jl = MagicMock()
     jl.rtt_read.return_value = b""
-    jl.rtt_write.return_value = 0
+    jl.rtt_write.side_effect = lambda _index, data: len(data)
     return jl
 
 
@@ -123,6 +123,30 @@ class TestRttManager:
         mgr.is_connected = False
         result = mgr.send_data(b"Hello")
         assert result is False
+
+    def test_send_data_retries_partial_writes(self, qapp):
+        from src.io.rtt_manager import RttManager
+        mgr = RttManager()
+        mock_jlink = _make_mock_jlink()
+        mock_jlink.rtt_write.side_effect = [2, 3]
+        mgr.jlink = mock_jlink
+        mgr.is_connected = True
+
+        assert mgr.send_data(b"Hello") is True
+        assert bytes(mock_jlink.rtt_write.call_args_list[0].args[1]) == b"Hello"
+        assert bytes(mock_jlink.rtt_write.call_args_list[1].args[1]) == b"llo"
+
+    def test_send_data_fails_when_rtt_buffer_stays_full(self, qapp):
+        from src.io.rtt_manager import RttManager
+        mgr = RttManager()
+        mock_jlink = _make_mock_jlink()
+        mock_jlink.rtt_write.side_effect = None
+        mock_jlink.rtt_write.return_value = 0
+        mgr.jlink = mock_jlink
+        mgr.is_connected = True
+
+        with patch("src.io.rtt_manager.RTT_WRITE_TIMEOUT_SECONDS", 0):
+            assert mgr.send_data(b"Hello") is False
 
     def test_send_data_hex_string(self, qapp):
         from src.io.rtt_manager import RttManager
