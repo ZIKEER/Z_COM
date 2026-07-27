@@ -53,11 +53,11 @@ class TestBytesToHtml:
 
     def test_bold(self):
         html = parser.bytes_to_html(b"\x1B[1mBold", dummy_to_ascii)
-        assert "bold" in html
+        assert "font-weight: bold" in html
 
     def test_underline(self):
         html = parser.bytes_to_html(b"\x1B[4mUnder", dummy_to_ascii)
-        assert "underline" in html
+        assert "text-decoration: underline" in html
 
     def test_bright_colors(self):
         html = parser.bytes_to_html(b"\x1B[91mBright", dummy_to_ascii)
@@ -65,7 +65,12 @@ class TestBytesToHtml:
 
     def test_256_colors(self):
         html = parser.bytes_to_html(b"\x1B[38;5;82mColor256", dummy_to_ascii)
+        assert "color: #5FFF00" in html
         assert "Color256" in html
+
+    def test_256_background_color(self):
+        html = parser.bytes_to_html(b"\x1B[48;5;196mBg256", dummy_to_ascii)
+        assert "background: #FF0000" in html
 
     def test_truecolor(self):
         html = parser.bytes_to_html(b"\x1B[38;2;255;128;0mOrange", dummy_to_ascii)
@@ -120,7 +125,7 @@ class TestParseSgr:
 
     def test_combined(self):
         result = AnsiParser._parse_sgr("1;31")
-        assert result.get("bold") is True
+        assert result.get("font-weight") == "bold"
         assert result.get("color") == "#C00000"
 
     def test_malformed_parameter_is_ignored(self):

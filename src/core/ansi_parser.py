@@ -16,6 +16,29 @@ class AnsiParser:
         94: '#4040FF', 95: '#FF40FF', 96: '#40FFFF', 97: '#FFFFFF',
     }
 
+    ANSI_16_COLORS = (
+        '#000000', '#800000', '#008000', '#808000',
+        '#000080', '#800080', '#008080', '#C0C0C0',
+        '#808080', '#FF0000', '#00FF00', '#FFFF00',
+        '#0000FF', '#FF00FF', '#00FFFF', '#FFFFFF',
+    )
+
+    @staticmethod
+    def _color_256(index):
+        if not 0 <= index <= 255:
+            return None
+        if index < 16:
+            return AnsiParser.ANSI_16_COLORS[index]
+        if index < 232:
+            value = index - 16
+            levels = (0, 95, 135, 175, 215, 255)
+            r = levels[value // 36]
+            g = levels[(value % 36) // 6]
+            b = levels[value % 6]
+        else:
+            r = g = b = 8 + (index - 232) * 10
+        return f'#{r:02X}{g:02X}{b:02X}'
+
     @staticmethod
     def bytes_to_html(data, to_ascii_func):
         """将原始字节中的 ANSI 转义序列转换为 HTML
@@ -85,9 +108,9 @@ class AnsiParser:
             if p == 0:
                 return None
             elif p == 1:
-                styles['bold'] = True
+                styles['font-weight'] = 'bold'
             elif p == 4:
-                styles['underline'] = True
+                styles['text-decoration'] = 'underline'
             elif 30 <= p <= 37:
                 styles['color'] = AnsiParser.FG_COLORS.get(p)
             elif 90 <= p <= 97:
@@ -98,6 +121,9 @@ class AnsiParser:
                 styles['background'] = AnsiParser.FG_COLORS.get(p - 10)
             elif p == 38 and i + 2 < len(params):
                 if params[i + 1] == 5:
+                    color = AnsiParser._color_256(params[i + 2])
+                    if color:
+                        styles['color'] = color
                     i += 2
                 elif params[i + 1] == 2 and i + 4 < len(params):
                     r, g, b = params[i + 2], params[i + 3], params[i + 4]
@@ -106,6 +132,9 @@ class AnsiParser:
                     i += 4
             elif p == 48 and i + 2 < len(params):
                 if params[i + 1] == 5:
+                    color = AnsiParser._color_256(params[i + 2])
+                    if color:
+                        styles['background'] = color
                     i += 2
                 elif params[i + 1] == 2 and i + 4 < len(params):
                     r, g, b = params[i + 2], params[i + 3], params[i + 4]
