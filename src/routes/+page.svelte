@@ -894,6 +894,7 @@
   function clearReceive() {
     receiveLines = [];
     receivedCount = 0;
+    sentCount = 0;
     lineId = 0;
   }
 
@@ -1060,7 +1061,7 @@
         </div>
         <label class="inline-check"><input type="checkbox" bind:checked={config.auto_scroll} onchange={savePreferences} />自动滚动</label>
         <span class="toolbar-spacer"></span>
-        <button class="icon-button subtle" title="清空接收区" onclick={clearReceive}><Eraser size={16} /></button>
+        <button class="icon-button subtle" title="清空报文并重置收发计数" onclick={clearReceive}><Eraser size={16} /></button>
       </div>
       <pre class="receive-output" bind:this={receiveView} aria-label="接收数据" oncontextmenu={showReceiveContextMenu}>{@html receiveHtml}</pre>
     </section>
@@ -1202,7 +1203,7 @@
     <button role="menuitem" disabled={!receiveContextSelection} onclick={copyReceiveSelection}><span>复制</span><kbd>Ctrl+C</kbd></button>
     <button role="menuitem" disabled={!receiveLines.length} onclick={selectAllReceive}><span>全选</span><kbd>Ctrl+A</kbd></button>
     <div class="context-separator"></div>
-    <button role="menuitem" disabled={!receiveLines.length} onclick={clearReceiveFromContextMenu}><span>清空接收</span></button>
+    <button role="menuitem" disabled={!receiveLines.length} onclick={clearReceiveFromContextMenu}><span>清空报文并重置计数</span></button>
     <button role="menuitemcheckbox" aria-checked={config.display_ansi} onclick={toggleAnsiFromContextMenu}><span><i>{config.display_ansi ? "✓" : ""}</i>ANSI 颜色显示</span></button>
   </div>
 {/if}
