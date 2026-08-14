@@ -268,9 +268,12 @@ def build():
             print("[信息] 清理临时文件...")
             clean_nuitka_temps()
             
-            # 删除未使用的 Qt DLL / 插件 / PYD
-            print("[信息] 删除未使用的 Qt 文件以减小体积...")
-            remove_unnecessary_files(dist_dir)
+            # 默认保留 PySide6 的完整运行时，避免 Qt 插件隐式依赖被误删。
+            if os.environ.get("Z_COM_STRIP_QT") == "1":
+                print("[警告] Z_COM_STRIP_QT=1，删除未使用的 Qt 文件")
+                remove_unnecessary_files(dist_dir)
+            else:
+                print("[信息] 保留完整 Qt 运行时（如需精简请显式设置 Z_COM_STRIP_QT=1）")
             
             
             # 显示结果

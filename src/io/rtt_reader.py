@@ -62,4 +62,5 @@ class RttReaderThread(QThread):
     def stop(self):
         self.running = False
         self.requestInterruption()
-        self.wait(1000)
+        # 不允许 QThread 在仍运行时被 Python/Qt 回收，否则 Qt 会直接中止进程。
+        self.wait()

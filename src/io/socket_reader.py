@@ -204,4 +204,4 @@ class SocketReaderThread(QThread):
             self._clients.clear()
             self._udp_clients.clear()
             self._current_client = None
-        self.wait(1000)
+        self.wait()

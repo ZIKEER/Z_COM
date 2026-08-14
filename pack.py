@@ -188,10 +188,13 @@ def build():
         result = subprocess.run(pyinstaller_args, check=True)
         
         if result.returncode == 0:
-            # 重命名输出目录
-            # 删除未使用的 Qt 文件
-            print("[信息] 删除未使用的 Qt 文件以减小体积...")
-            remove_unnecessary_files(dist_dir)
+            # 默认保留 PySide6 的完整运行时。Qt 插件/隐式依赖会随版本变化，
+            # 静态删除 DLL 可能导致目标机器启动或运行时在 Qt6Core 中崩溃。
+            if os.environ.get("Z_COM_STRIP_QT") == "1":
+                print("[警告] Z_COM_STRIP_QT=1，删除未使用的 Qt 文件")
+                remove_unnecessary_files(dist_dir)
+            else:
+                print("[信息] 保留完整 Qt 运行时（如需精简请显式设置 Z_COM_STRIP_QT=1）")
             
             # 显示结果
             show_result(dist_dir, app_name)

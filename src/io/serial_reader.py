@@ -74,4 +74,6 @@ class SerialReaderThread(QThread):
         self.requestInterruption()
         with self._lock:
             self._emit_buffer()
-        self.wait(1000)
+        # 线程必须结束后才能释放 QThread；超时后继续运行会导致
+        # Qt 在对象销毁时以 0xC0000409 中止进程。
+        self.wait()

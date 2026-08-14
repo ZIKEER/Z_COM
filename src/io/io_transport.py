@@ -75,6 +75,9 @@ class IOTransport(QObject):
                 pass
             if self.reader_thread.isRunning():
                 self.reader_thread.stop()
+            # stop() 返回时线程已退出；这里保留显式 wait 作为生命周期屏障，
+            # 防止 QThread 在退出阶段仍被 Qt 销毁。
+            self.reader_thread.wait()
             self.reader_thread = None
 
     def _connect_reader_thread(self, thread):
