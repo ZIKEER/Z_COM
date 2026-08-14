@@ -1005,7 +1005,7 @@
   }
 </script>
 
-<svelte:head><title>Z_COM</title></svelte:head>
+<svelte:head><title>{instanceId > 1 ? `Z_COM - 实例 ${instanceId}` : "Z_COM"}</title></svelte:head>
 
 <main class="app-shell" class:resizing style={`--send-panel-height:calc(${config.send_panel_ratio * 100}vh - ${config.send_panel_ratio * 69}px);--extended-panel-width:${config.extended_panel_ratio * 100}%`}>
   <header class="connection-bar">
