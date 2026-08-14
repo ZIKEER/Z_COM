@@ -92,6 +92,7 @@
     config: AppConfig;
     extended: ExtendedConfig;
     version: string;
+    buildTimestamp: number;
     dataDirectory: string;
     probeTargetDirectory: string;
     instanceId: number;
@@ -151,6 +152,7 @@
   let appendCrLf = $state(false);
   let autoSend = $state(false);
   let settingsOpen = $state(false);
+  let aboutOpen = $state(false);
   let sidebarOpen = $state(false);
   let receiveContextMenu = $state<{ x: number; y: number } | null>(null);
   let receiveContextSelection = $state("");
@@ -163,6 +165,7 @@
   let extendedRunning = $state(false);
   let stopExtended = false;
   let version = $state("0.1.2");
+  let buildTimestamp = $state(0);
   let dataDirectory = $state("");
   let probeTargetDirectory = $state("");
   let customProbeTargets = $state<string[]>([]);
@@ -197,6 +200,7 @@
         draftConfig = structuredClone(config);
         extended = data.extended;
         version = data.version;
+        buildTimestamp = data.buildTimestamp;
         dataDirectory = data.dataDirectory;
         probeTargetDirectory = data.probeTargetDirectory;
         instanceId = data.instanceId;
@@ -932,6 +936,7 @@
         {#if connected}<Link2Off size={17} />断开{:else}<Link size={17} />{connecting ? "连接中" : "连接"}{/if}
       </button>
       <button class="icon-button" title="更多设置" onclick={openSettings}><Settings size={17} /></button>
+      <button class="icon-button" title="关于 Z_COM" onclick={() => aboutOpen = true}><CircleHelp size={17} /></button>
       <button class="icon-button" class:active={sidebarOpen} title="扩展发送" onclick={toggleSidebar}>{#if sidebarOpen}<ChevronRight size={17} />{:else}<ChevronLeft size={17} />{/if}</button>
     </div>
   </header>
@@ -1056,6 +1061,25 @@
         </fieldset>
       </div>
       <footer><button onclick={() => settingsOpen = false}>取消</button><button class="primary" onclick={applySettings}>应用</button></footer>
+    </div>
+  </div>
+{/if}
+
+{#if aboutOpen}
+  <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && (aboutOpen = false)}>
+    <div class="about-dialog" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <header><h2 id="about-title">关于 Z_COM</h2><button class="icon-button" title="关闭" onclick={() => aboutOpen = false}><Minus size={17} /></button></header>
+      <div class="about-body">
+        <div class="about-logo">Z</div>
+        <dl>
+          <dt>软件版本</dt><dd>v{version}</dd>
+          <dt>构建时间</dt><dd>{buildTimestamp ? new Date(buildTimestamp * 1000).toLocaleString("zh-CN", { hour12: false }) : "未知"}</dd>
+          <dt>实例索引</dt><dd>实例 {instanceId}</dd>
+          <dt>通信后端</dt><dd>串口、TCP/UDP、SEGGER J-Link RTT、probe-rs RTT</dd>
+          <dt>数据目录</dt><dd title={dataDirectory}>{dataDirectory}</dd>
+        </dl>
+      </div>
+      <footer><button disabled title="远期开展计划">检查更新</button><button class="primary" onclick={() => aboutOpen = false}>确定</button></footer>
     </div>
   </div>
 {/if}
@@ -1193,6 +1217,18 @@
   .settings-dialog > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 8px 12px; border-top: 1px solid #bdc5cb; }
   .settings-dialog > footer button { min-width: 72px; padding: 0 12px; }
   .settings-dialog > footer .primary { background: #4caf50; color: #fff; border-color: #429846; }
+  .about-dialog { width: min(590px, 94vw); background: #f5f5f5; border: 1px solid #777; box-shadow: 0 16px 45px rgba(20, 25, 29, .24); }
+  .about-dialog > header { height: 42px; display: flex; align-items: center; padding: 0 10px 0 14px; border-bottom: 1px solid #bdc5cb; }
+  .about-dialog > header h2 { margin: 0; font-size: 15px; }
+  .about-dialog > header button { margin-left: auto; }
+  .about-body { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 16px; padding: 18px; }
+  .about-logo { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 13px; color: #fff; background: #18794e; font-size: 34px; font-weight: 800; }
+  .about-body dl { margin: 0; display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 9px 12px; align-items: start; }
+  .about-body dt { color: #667078; }
+  .about-body dd { margin: 0; overflow-wrap: anywhere; }
+  .about-dialog > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 8px 12px; border-top: 1px solid #bdc5cb; }
+  .about-dialog > footer button { min-width: 82px; padding: 0 12px; }
+  .about-dialog > footer .primary { background: #4caf50; color: #fff; border-color: #429846; }
 
   @media (max-width: 900px) {
     .connection-bar { flex-wrap: wrap; height: auto; }

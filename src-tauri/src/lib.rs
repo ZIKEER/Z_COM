@@ -37,6 +37,7 @@ fn bootstrap(state: State<'_, AppState>) -> Result<BootstrapData, String> {
         config: state.config.lock().map_err(lock_error)?.clone(),
         extended: state.extended.lock().map_err(lock_error)?.clone(),
         version: env!("CARGO_PKG_VERSION").into(),
+        build_timestamp: env!("Z_COM_BUILD_TIMESTAMP").parse().unwrap_or_default(),
         data_directory: state.config_directory.display().to_string(),
         probe_target_directory: state
             .config_directory

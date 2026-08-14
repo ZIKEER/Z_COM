@@ -183,6 +183,7 @@ pub struct BootstrapData {
     pub config: AppConfig,
     pub extended: ExtendedSendConfig,
     pub version: String,
+    pub build_timestamp: u64,
     pub data_directory: String,
     pub probe_target_directory: String,
     pub instance_id: u32,
