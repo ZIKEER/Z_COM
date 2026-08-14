@@ -34,6 +34,7 @@
     transport_mode: TransportMode;
     port: string;
     baudrate: string;
+    baudrate_history: string[];
     databits: number;
     stopbits: number;
     parity: string;
@@ -81,7 +82,7 @@
   }
 
   interface TransportEvent {
-    kind: "connected" | "disconnected" | "data" | "error" | "warning" | "peer";
+    kind: "connected" | "disconnected" | "data" | "error" | "warning" | "peer" | "info";
     direction: "received" | "sent" | "system";
     bytes: number[];
     message: string;
@@ -106,6 +107,7 @@
     transport_mode: "serial",
     port: "",
     baudrate: "115200",
+    baudrate_history: [],
     databits: 8,
     stopbits: 1,
     parity: "None",
@@ -165,12 +167,19 @@
   let probeTargetDirectory = $state("");
   let customProbeTargets = $state<string[]>([]);
   let instanceId = $state(1);
+  let lastValidBaudrate = $state("115200");
 
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
   const probeChipOptions = $derived([
     ...new Set([...config.probe_chip_history, ...customProbeTargets]),
   ]);
+  const baudrateOptions = $derived([
+    ...new Set([
+      "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200",
+      "230400", "460800", "921600", "1000000", "2000000", ...config.baudrate_history,
+    ]),
+  ].sort((left, right) => Number(left) - Number(right)));
 
   onMount(() => {
     let unlisten: UnlistenFn | undefined;
@@ -179,7 +188,13 @@
         unlisten = await listen<TransportEvent>("transport-event", ({ payload }) => handleTransportEvent(payload));
         const data = await invoke<BootstrapData>("bootstrap");
         config = data.config;
-        draftConfig = structuredClone(data.config);
+        try {
+          config.baudrate = String(validatedBaudrate(config.baudrate));
+        } catch {
+          config.baudrate = "115200";
+        }
+        lastValidBaudrate = config.baudrate;
+        draftConfig = structuredClone(config);
         extended = data.extended;
         version = data.version;
         dataDirectory = data.dataDirectory;
@@ -235,6 +250,11 @@
     connecting = true;
     statusText = "正在连接...";
     try {
+      if (mode === "serial") {
+        config.baudrate = String(validatedBaudrate(config.baudrate));
+        rememberBaudrate(config.baudrate);
+        lastValidBaudrate = config.baudrate;
+      }
       if (mode === "probe" && config.probe_chip && !config.probe_chip_history.includes(config.probe_chip)) {
         config.probe_chip_history = [config.probe_chip, ...config.probe_chip_history].slice(0, 20);
       }
@@ -263,6 +283,44 @@
       statusText = "连接失败";
       showError(error);
     }
+  }
+
+  async function updateBaudrate() {
+    const previousConfig = structuredClone($state.snapshot(config));
+    previousConfig.baudrate = lastValidBaudrate;
+    let serialReconfigured = false;
+    try {
+      config.baudrate = String(validatedBaudrate(config.baudrate));
+      rememberBaudrate(config.baudrate);
+      if (connected && mode === "serial") {
+        await invoke("reconfigure_serial", { settings: serialSettings(config) });
+        serialReconfigured = true;
+      }
+      await invoke("save_config", { config });
+      lastValidBaudrate = config.baudrate;
+    } catch (error) {
+      if (serialReconfigured) {
+        try {
+          await invoke("reconfigure_serial", { settings: serialSettings(previousConfig) });
+        } catch {}
+      }
+      config = previousConfig;
+      showError(error);
+    }
+  }
+
+  function validatedBaudrate(value: string) {
+    const normalized = value.trim();
+    if (!/^\d+$/.test(normalized)) throw new Error("波特率必须是正整数");
+    const baudrate = Number(normalized);
+    if (!Number.isSafeInteger(baudrate) || baudrate < 1 || baudrate > 10_000_000) {
+      throw new Error("波特率必须在 1 到 10000000 之间");
+    }
+    return baudrate;
+  }
+
+  function rememberBaudrate(value: string) {
+    config.baudrate_history = [value, ...config.baudrate_history.filter((item) => item !== value)].slice(0, 12);
   }
 
   function handleTransportEvent(event: TransportEvent) {
@@ -830,7 +888,8 @@
     <div class="connection-fields">
       {#if mode === "serial"}
         <label><span>设备</span><select bind:value={config.port} onchange={savePreferences} disabled={connected}>{#each serialDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
-        <label class="short"><span>波特率</span><select bind:value={config.baudrate} onchange={savePreferences} disabled={connected}>{#each ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"] as baud}<option>{baud}</option>{/each}</select></label>
+        <label class="short"><span>波特率</span><input list="baudrate-options" inputmode="numeric" bind:value={config.baudrate} onchange={updateBaudrate} disabled={connecting} /></label>
+        <datalist id="baudrate-options">{#each baudrateOptions as baud}<option value={baud}></option>{/each}</datalist>
       {:else if mode === "socket"}
         <div class="mini-switch"><button class:active={socketProtocol === "TCP"} onclick={() => setSocketProtocol("TCP")}>TCP</button><button class:active={socketProtocol === "UDP"} onclick={() => setSocketProtocol("UDP")}>UDP</button></div>
         <div class="mini-switch"><button class:active={socketRole === "Client"} onclick={() => setSocketRole("Client")}>客户端</button><button class:active={socketRole === "Server"} onclick={() => setSocketRole("Server")}>服务端</button></div>
@@ -1004,7 +1063,7 @@
   .connection-fields label > span { color: #404040; white-space: nowrap; }
   .connection-fields select, .connection-fields input { height: 30px; padding: 4px 7px; min-width: 130px; }
   .connection-fields label:first-child select { width: clamp(160px, 23vw, 300px); }
-  .connection-fields .short select { min-width: 90px; width: 96px; }
+  .connection-fields .short input { min-width: 90px; width: 104px; }
   .connection-fields .host input { width: 150px; }
   .connection-fields .port input { width: 82px; min-width: 0; }
   .connection-fields .probe-select select { width: clamp(190px, 27vw, 360px); }
