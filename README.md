@@ -58,6 +58,7 @@
 - 配置自动保存到 `config/settings.json`。
 - 扩展发送自动保存到 `config/extended_send.json`。
 - 通信数据和后端事件自动写入 `logs/log_YYYY-MM-DD.txt`，按本机自然日期每天一个文件，跨过午夜后自动切换并在同一天持续追加。
+- 每条通信日志包含毫秒级完整日期时间、`←`/`→` 方向、HEX 和 ASCII；控制字符使用 Unicode 控制图符，非 ASCII 字节使用 `\xNN`，事件使用独立单行记录。
 - 不提供手动保存日志或当前显示内容入口，避免现场数据依赖人工操作。
 - `config/`、`logs/`、`locks/` 和 `instance_N/` 均位于当前执行文件同级目录，不使用系统用户配置目录。
 - 基于文件锁分配多实例编号；实例 2+ 使用独立的 `instance_N/config` 和 `instance_N/logs`，索引显示在状态栏、About 及非首实例窗口标题中。
@@ -72,7 +73,6 @@
 | 优先级 | 功能 | 当前状态 | 目标与验收标准 |
 |---|---|---|---|
 | P0 | Windows / Linux 跨平台支持 | **待完善** | 至少正式支持 Windows 10/11 x86_64 与主流 glibc Linux x86_64，并分别使用对应系统原生构建，不用 Windows 专属 API。串口、TCP/UDP、自动日志、绿色配置、多实例、后台任务和 About 必须在两端通过实机验收；界面兼容 Windows WebView2 与 Linux WebKitGTK、X11/Wayland。 |
-| P2 | 日志可读性 | **待完善** | 日志结构与 Python 分支保持相近，包含完整时间、方向、HEX、ASCII 和事件即可；不要求逐字符完全一致，也不要求兼容 Python 日志转换器。 |
 
 ## 远期开展计划
 
