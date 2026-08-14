@@ -217,7 +217,7 @@
 
   $effect(() => {
     if (!autoSend || !connected) return;
-    const timer = window.setInterval(() => void sendCurrent(), Math.max(config.auto_send_interval, 100));
+    const timer = window.setInterval(() => void sendCurrent("auto"), Math.max(config.auto_send_interval, 100));
     return () => window.clearInterval(timer);
   });
 
@@ -517,11 +517,11 @@
     await savePreferences();
   }
 
-  async function sendCurrent() {
+  async function sendCurrent(source: "manual" | "auto" = "manual") {
     if (!connected) return;
     try {
       const bytes = encodeSend(sendText, config.send_mode, appendCrLf);
-      if (!bytes.length) return;
+      if (!bytes.length) throw new Error(source === "auto" ? "自动发送已停止：发送内容不能为空" : "发送内容不能为空");
       await invoke("send_bytes", { bytes: Array.from(bytes) });
     } catch (error) {
       autoSend = false;
@@ -534,6 +534,7 @@
     try {
       const content = item.is_hex ? item.data : decodeAsciiEscapes(item.data);
       const bytes = encodeSend(content, item.is_hex ? "HEX" : "ASCII", false);
+      if (!bytes.length) throw new Error("扩展发送内容不能为空");
       await invoke("send_bytes", { bytes: Array.from(bytes) });
     } catch (error) {
       showError(error);
@@ -708,13 +709,18 @@
   function encodeSend(value: string, sendMode: SendMode, crlf: boolean): Uint8Array {
     let bytes: Uint8Array;
     if (sendMode === "HEX") {
-      const compact = value.replace(/0x/gi, "").replace(/[\s,]+/g, "");
+      const normalized = value.trim();
+      if (!normalized) return new Uint8Array();
+      if (!/^(?:0x)?[0-9a-f]+(?:[\s,]+(?:0x)?[0-9a-f]+)*$/i.test(normalized)) {
+        throw new Error("HEX 数据只能包含十六进制字符、0x 前缀、空格或逗号");
+      }
+      const compact = normalized.replace(/0x/gi, "").replace(/[\s,]+/g, "");
       if (compact.length % 2) throw new Error("HEX 数据必须由完整字节组成");
-      if (compact && !/^[0-9a-f]+$/i.test(compact)) throw new Error("HEX 数据包含无效字符");
       bytes = new Uint8Array(compact.match(/.{2}/g)?.map((part) => Number.parseInt(part, 16)) ?? []);
     } else {
       bytes = new TextEncoder().encode(value);
     }
+    if (!bytes.length) return bytes;
     if (!crlf) return bytes;
     const result = new Uint8Array(bytes.length + 2);
     result.set(bytes);
@@ -723,10 +729,28 @@
   }
 
   function decodeAsciiEscapes(value: string) {
-    return value.replace(/\\(?:x([0-9a-fA-F]{2})|([rnt0\\]))/g, (match, hex: string | undefined, simple: string | undefined) => {
-      if (hex) return String.fromCharCode(Number.parseInt(hex, 16));
-      return ({ r: "\r", n: "\n", t: "\t", 0: "\0", "\\": "\\" } as Record<string, string>)[simple ?? ""] ?? match;
-    });
+    let result = "";
+    for (let index = 0; index < value.length; index += 1) {
+      const character = value[index];
+      if (character !== "\\") {
+        result += character;
+        continue;
+      }
+      const escaped = value[++index];
+      if (escaped === undefined) throw new Error(`转义字符不完整（位置 ${index}）`);
+      const simple = ({ r: "\r", n: "\n", t: "\t", 0: "\0", "\\": "\\" } as Record<string, string>)[escaped];
+      if (simple !== undefined) {
+        result += simple;
+      } else if (escaped === "x") {
+        const hex = value.slice(index + 1, index + 3);
+        if (!/^[0-9a-f]{2}$/i.test(hex)) throw new Error(`\\x 转义必须跟两个十六进制字符（位置 ${index}）`);
+        result += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 2;
+      } else {
+        throw new Error(`不支持的转义 \\${escaped}（位置 ${index}）`);
+      }
+    }
+    return result;
   }
 
   function setMode(value: TransportMode) {
@@ -981,7 +1005,7 @@
       <input class="interval" aria-label="自动发送间隔" type="number" min="100" max="60000" bind:value={config.auto_send_interval} onblur={savePreferences} /><span>ms</span>
     </div>
     <textarea bind:value={sendText} aria-label="发送数据" placeholder={config.send_mode === "HEX" ? "输入十六进制字节，例如 01 03 00 00" : "输入要发送的文本"}></textarea>
-    <button class="send-button" onclick={sendCurrent} disabled={!connected}><Send size={18} />发送</button>
+    <button class="send-button" onclick={() => sendCurrent()} disabled={!connected}><Send size={18} />发送</button>
   </section>
 
   <footer class="status-bar">

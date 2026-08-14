@@ -68,6 +68,9 @@ impl TransportManager {
     }
 
     pub fn send(&self, bytes: Vec<u8>) -> Result<(), String> {
+        if bytes.is_empty() {
+            return Err("发送数据不能为空".into());
+        }
         let worker = self.worker.as_ref().ok_or("当前没有活动连接")?;
         worker
             .commands
@@ -843,8 +846,8 @@ mod tests {
     use serialport::{DataBits, FlowControl, Parity, StopBits};
 
     use super::{
-        list_custom_probe_targets, parse_data_bits, parse_flow_control, parse_parity,
-        parse_stop_bits,
+        TransportManager, list_custom_probe_targets, parse_data_bits, parse_flow_control,
+        parse_parity, parse_stop_bits,
     };
 
     struct TestDirectory(PathBuf);
@@ -923,6 +926,14 @@ flash_algorithms: []
         assert_eq!(
             parse_flow_control("Hardware").unwrap(),
             FlowControl::Hardware
+        );
+    }
+
+    #[test]
+    fn rejects_empty_send_before_transport_access() {
+        assert_eq!(
+            TransportManager::default().send(Vec::new()).unwrap_err(),
+            "发送数据不能为空"
         );
     }
 }
