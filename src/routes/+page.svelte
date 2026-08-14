@@ -52,6 +52,8 @@
     probe_reset: boolean;
     probe_chip_history: string[];
     preset_panel_visible: boolean;
+    send_panel_ratio: number;
+    extended_panel_ratio: number;
     socket_host: string;
     socket_port: number;
     socket_protocol: "TCP" | "UDP";
@@ -126,6 +128,8 @@
     probe_reset: false,
     probe_chip_history: [],
     preset_panel_visible: false,
+    send_panel_ratio: 0.2,
+    extended_panel_ratio: 0.37,
     socket_host: "127.0.0.1",
     socket_port: 8080,
     socket_protocol: "TCP",
@@ -171,6 +175,7 @@
   let customProbeTargets = $state<string[]>([]);
   let instanceId = $state(1);
   let lastValidBaudrate = $state("115200");
+  let resizing = $state(false);
 
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
@@ -191,6 +196,8 @@
         unlisten = await listen<TransportEvent>("transport-event", ({ payload }) => handleTransportEvent(payload));
         const data = await invoke<BootstrapData>("bootstrap");
         config = data.config;
+        config.send_panel_ratio = clamp(config.send_panel_ratio, 0.12, 0.5);
+        config.extended_panel_ratio = clamp(config.extended_panel_ratio, 0.25, 0.6);
         try {
           config.baudrate = String(validatedBaudrate(config.baudrate));
         } catch {
@@ -788,6 +795,47 @@
     void savePreferences();
   }
 
+  function startSendPanelResize(event: PointerEvent) {
+    event.preventDefault();
+    resizing = true;
+    const move = (moveEvent: PointerEvent) => {
+      const usableHeight = Math.max(window.innerHeight - 69, 1);
+      config.send_panel_ratio = clamp((window.innerHeight - 25 - moveEvent.clientY) / usableHeight, 0.12, 0.5);
+    };
+    const finish = () => {
+      resizing = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      void savePreferences();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+  }
+
+  function startExtendedPanelResize(event: PointerEvent) {
+    event.preventDefault();
+    resizing = true;
+    const move = (moveEvent: PointerEvent) => {
+      config.extended_panel_ratio = clamp((window.innerWidth - moveEvent.clientX) / Math.max(window.innerWidth, 1), 0.25, 0.6);
+    };
+    const finish = () => {
+      resizing = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      void savePreferences();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+  }
+
+  function clamp(value: number, minimum: number, maximum: number) {
+    return Math.min(Math.max(Number.isFinite(value) ? value : minimum, minimum), maximum);
+  }
+
   function clearReceive() {
     receiveLines = [];
     receivedCount = 0;
@@ -903,7 +951,7 @@
 
 <svelte:head><title>Z_COM</title></svelte:head>
 
-<main class="app-shell">
+<main class="app-shell" class:resizing style={`--send-panel-height:calc(${config.send_panel_ratio * 100}vh - ${config.send_panel_ratio * 69}px);--extended-panel-width:${config.extended_panel_ratio * 100}%`}>
   <header class="connection-bar">
     <div class="mode-switch" aria-label="传输方式">
       <button class:active={mode === "serial"} onclick={() => setMode("serial")}>串口</button>
@@ -962,6 +1010,7 @@
     </section>
 
     {#if sidebarOpen}
+      <button class="extended-splitter" aria-label="调整扩展发送区域宽度" title="拖动调整扩展发送区域宽度" onpointerdown={startExtendedPanelResize}></button>
       <aside class="extended-pane">
         <div class="pane-toolbar">
           <strong>扩展发送</strong><span class="toolbar-spacer"></span>
@@ -1000,6 +1049,8 @@
       </aside>
     {/if}
   </section>
+
+  <button class="send-splitter" aria-label="调整发送区域高度" title="拖动调整发送区域高度" onpointerdown={startSendPanelResize}></button>
 
   <section class="send-pane">
     <div class="send-options">
@@ -1104,7 +1155,8 @@
   :global(input), :global(select), :global(textarea) { border: 1px solid #b8b8b8; background: #fff; color: #202020; border-radius: 2px; outline: none; }
   :global(input:focus), :global(select:focus), :global(textarea:focus) { border-color: #0078d4; box-shadow: 0 0 0 1px rgba(0, 120, 212, .12); }
 
-  .app-shell { height: 100vh; display: grid; grid-template-rows: 44px auto minmax(0, 1fr) 132px 25px; background: #f0f0f0; }
+  .app-shell { height: 100vh; display: grid; grid-template-rows: 44px auto minmax(160px, 1fr) 5px clamp(96px, var(--send-panel-height), 50vh) 25px; background: #f0f0f0; }
+  .app-shell.resizing { user-select: none; cursor: row-resize; }
   .connection-bar { grid-row: 1; display: flex; align-items: center; gap: 7px; padding: 5px 7px; background: #f5f5f5; border-bottom: 1px solid #b8b8b8; min-width: 0; }
   .connection-fields { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
   .connection-fields label { display: flex; align-items: center; gap: 5px; min-width: 0; }
@@ -1140,8 +1192,8 @@
   .error-strip { grid-row: 2; min-height: 29px; display: flex; align-items: center; gap: 8px; padding: 4px 9px; color: #842b32; background: #f7e4e5; border-bottom: 1px solid #dfaeb2; }
   .error-strip span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .error-strip button { width: 24px; min-height: 20px; border: 0; background: transparent; display: grid; place-items: center; }
-  .workspace { grid-row: 3; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 4px 4px 0; }
-  .workspace.with-sidebar { grid-template-columns: minmax(350px, 1fr) clamp(320px, 37vw, 520px); }
+  .workspace { grid-row: 3; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); padding: 4px 4px 0; }
+  .workspace.with-sidebar { grid-template-columns: minmax(350px, 1fr) 5px clamp(280px, var(--extended-panel-width), 70%); }
   .receive-pane, .extended-pane, .send-pane { min-width: 0; background: #fff; border: 1px solid #a9a9a9; }
   .receive-pane, .extended-pane { min-height: 0; display: flex; flex-direction: column; }
   .pane-toolbar { height: 33px; display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: #f5f5f5; border-bottom: 1px solid #c8c8c8; flex: 0 0 33px; }
@@ -1185,12 +1237,16 @@
   .extended-footer { min-height: 37px; display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: #f5f5f5; border-top: 1px solid #c8c8c8; }
   .extended-footer .run-button { margin-left: auto; min-height: 27px; }
   .help { color: #69747d; display: grid; place-items: center; }
-  .send-pane { grid-row: 4; margin: 4px; display: grid; grid-template-columns: minmax(0, 1fr) 82px; grid-template-rows: 32px minmax(0, 1fr); padding: 4px; gap: 3px 5px; }
+  .extended-splitter, .send-splitter { min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: #d5dadd; touch-action: none; }
+  .extended-splitter { width: 5px; height: auto; cursor: col-resize; }
+  .send-splitter { grid-row: 4; width: auto; height: 5px; margin: 0 4px; cursor: row-resize; }
+  .extended-splitter:hover, .send-splitter:hover { background: #0078d4; border: 0; }
+  .send-pane { grid-row: 5; margin: 0 4px 4px; display: grid; grid-template-columns: minmax(0, 1fr) 82px; grid-template-rows: 32px minmax(0, 1fr); padding: 4px; gap: 3px 5px; }
   .send-options { grid-column: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
   .send-options .interval { width: 72px; height: 25px; padding: 2px 5px; }
   .send-pane textarea { grid-column: 1; grid-row: 2; resize: none; min-height: 0; padding: 6px 8px; font-family: "Cascadia Mono", Consolas, monospace; }
   .send-pane .send-button { grid-column: 2; grid-row: 1 / 3; width: 100%; }
-  .status-bar { grid-row: 5; display: flex; align-items: center; gap: 7px; padding: 0 8px; color: #404040; border-top: 1px solid #b8b8b8; background: #f0f0f0; font-size: 12px; min-width: 0; }
+  .status-bar { grid-row: 6; display: flex; align-items: center; gap: 7px; padding: 0 8px; color: #404040; border-top: 1px solid #b8b8b8; background: #f0f0f0; font-size: 12px; min-width: 0; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #89939a; }
   .status-dot.online { background: #26834b; }
   .status-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42vw; }

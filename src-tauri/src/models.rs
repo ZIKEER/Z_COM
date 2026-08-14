@@ -29,6 +29,8 @@ pub struct AppConfig {
     #[serde(alias = "rtt_chip_history")]
     pub probe_chip_history: Vec<String>,
     pub preset_panel_visible: bool,
+    pub send_panel_ratio: f32,
+    pub extended_panel_ratio: f32,
     pub socket_host: String,
     pub socket_port: u16,
     pub socket_protocol: String,
@@ -60,6 +62,8 @@ impl Default for AppConfig {
             probe_reset: false,
             probe_chip_history: Vec::new(),
             preset_panel_visible: false,
+            send_panel_ratio: 0.2,
+            extended_panel_ratio: 0.37,
             socket_host: "127.0.0.1".into(),
             socket_port: 8080,
             socket_protocol: "TCP".into(),
