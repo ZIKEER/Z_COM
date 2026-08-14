@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
@@ -54,6 +54,9 @@ if (build.status !== 0) {
 
 await mkdir(outputDir, { recursive: true });
 await copyFile(sourceExecutable, outputExecutable);
+if (process.platform !== "win32") {
+  await chmod(outputExecutable, 0o755);
+}
 
 const executable = await readFile(outputExecutable);
 const executableStat = await stat(outputExecutable);

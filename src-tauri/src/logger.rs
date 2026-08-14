@@ -30,7 +30,11 @@ impl Logger {
 
     pub fn log_data(&mut self, direction: &str, bytes: &[u8]) {
         self.switch_date_if_needed();
-        let arrow = if direction == "received" { "←" } else { "→" };
+        let arrow = if direction == "received" {
+            "←"
+        } else {
+            "→"
+        };
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let hex = bytes
             .iter()
@@ -115,6 +119,9 @@ mod tests {
 
     #[test]
     fn formats_control_and_non_ascii_bytes_for_logs() {
-        assert_eq!(display_ascii(&[0x00, b'A', b'\n', 0x7f, 0x80]), "␀A␊\n␡\\x80");
+        assert_eq!(
+            display_ascii(&[0x00, b'A', b'\n', 0x7f, 0x80]),
+            "␀A␊\n␡\\x80"
+        );
     }
 }

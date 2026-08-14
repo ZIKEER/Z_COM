@@ -8,6 +8,7 @@
 
 - **已实现**：当前 Rust 版本已经具备，可进入实际测试。
 - **待完善**：已有基础实现，但行为、兼容性或交互还未达到目标。
+- **待实机验收**：代码与构建方案已经完成，但当前环境无法代替目标系统和真实硬件验证。
 - **计划支持**：需求已经确认，等待实现。
 - **暂不支持**：已经确认当前阶段不做，避免无效扩展。
 
@@ -72,7 +73,7 @@
 
 | 优先级 | 功能 | 当前状态 | 目标与验收标准 |
 |---|---|---|---|
-| P0 | Windows / Linux 跨平台支持 | **待完善** | 至少正式支持 Windows 10/11 x86_64 与主流 glibc Linux x86_64，并分别使用对应系统原生构建，不用 Windows 专属 API。串口、TCP/UDP、自动日志、绿色配置、多实例、后台任务和 About 必须在两端通过实机验收；界面兼容 Windows WebView2 与 Linux WebKitGTK、X11/Wayland。 |
+| P0 | Windows / Linux 跨平台支持 | **待实机验收** | Windows 代码、构建和自动检查已通过；Linux 已完成条件编译、动态库名称、权限提示、绿色版权限和原生构建方案。当前 WSL 缺少 Rust/WebKitGTK 构建依赖且不能替代串口/USB/桌面实机，正式完成仍需在 Ubuntu 24.04 x86_64 原生环境执行本文最低验收矩阵。 |
 
 ## 远期开展计划
 
@@ -193,6 +194,8 @@ src-tauri/src/update_apply.rs      更新模式、文件替换、回滚和重启
 - 两个平台都验证 TCP/UDP Client/Server、本机地址枚举和 TCP 新连接替换提示。
 - 有 SDK 与无 SDK 两种环境都验证启动；分别验证 J-Link SEGGER 后端和至少一种 probe-rs 探针。
 - Linux 分别验证正常权限和权限不足场景；Windows 验证 WebView2、SDK 路径选择及绿色目录迁移。
+
+Linux 构建依赖、串口/udev 权限和发布步骤见 [docs/linux.md](docs/linux.md)。
 
 ## 暂不支持
 

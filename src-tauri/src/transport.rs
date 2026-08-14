@@ -171,7 +171,7 @@ fn run_serial(
         .flow_control(parse_flow_control(&request.flow_control)?)
         .timeout(Duration::from_millis(10))
         .open()
-        .map_err(|error| format!("打开串口失败: {error}"))?;
+        .map_err(|error| serial_access_error("打开串口", &request.device_id, &error))?;
 
     emit(
         app,
@@ -738,9 +738,32 @@ fn yaml_files(directory: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn probe_driver_error(error: probe_rs::probe::DebugProbeError) -> String {
-    format!(
-        "调试探针访问失败: {error}。Windows 下部分探针需要 WinUSB 驱动；切换驱动前请评估与厂商工具的兼容性"
-    )
+    let message = format!("调试探针访问失败: {error}");
+    #[cfg(target_os = "windows")]
+    return format!(
+        "{message}。部分非 J-Link 探针需要 WinUSB 驱动；切换驱动前请评估与厂商工具的兼容性"
+    );
+    #[cfg(target_os = "linux")]
+    return format!("{message}。请确认已安装对应 udev 规则，且当前用户属于规则指定的设备访问组");
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    message
+}
+
+pub(crate) fn serial_access_error(
+    action: &str,
+    device: &str,
+    error: &dyn std::fmt::Display,
+) -> String {
+    let target = if device.is_empty() {
+        String::new()
+    } else {
+        format!(" {device}")
+    };
+    let message = format!("{action}{target}失败: {error}");
+    #[cfg(target_os = "linux")]
+    return format!("{message}。请确认设备存在，并将当前用户加入 dialout 组后重新登录");
+    #[cfg(not(target_os = "linux"))]
+    message
 }
 
 fn resolve_address(host: &str, port: u16) -> Result<SocketAddr, String> {

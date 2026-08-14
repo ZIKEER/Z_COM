@@ -66,10 +66,14 @@ async fn list_local_ipv4_addresses() -> Result<Vec<String>, String> {
 fn collect_local_ipv4_addresses() -> Vec<String> {
     let mut addresses = vec!["0.0.0.0".to_string(), "127.0.0.1".to_string()];
     if let Ok(interfaces) = if_addrs::get_if_addrs() {
-        addresses.extend(interfaces.into_iter().filter_map(|interface| match interface.addr {
-            if_addrs::IfAddr::V4(address) => Some(address.ip.to_string()),
-            if_addrs::IfAddr::V6(_) => None,
-        }));
+        addresses.extend(
+            interfaces
+                .into_iter()
+                .filter_map(|interface| match interface.addr {
+                    if_addrs::IfAddr::V4(address) => Some(address.ip.to_string()),
+                    if_addrs::IfAddr::V6(_) => None,
+                }),
+        );
     }
     addresses.sort_by_key(|address| {
         let priority = match address.as_str() {
@@ -84,7 +88,10 @@ fn collect_local_ipv4_addresses() -> Vec<String> {
 }
 
 #[tauri::command]
-async fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceEntry>, String> {
+async fn list_devices(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<DeviceEntry>, String> {
     let (include_probes, show_generic_jtag_adapters, jlink_sdk_path) = state
         .config
         .lock()
@@ -96,15 +103,15 @@ async fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceEntry>, St
             )
         })
         .unwrap_or((true, false, String::new()));
-    tauri::async_runtime::spawn_blocking(move || {
-        collect_devices(
-            include_probes,
-            show_generic_jtag_adapters,
-            &jlink_sdk_path,
-        )
+    let (devices, warnings) = tauri::async_runtime::spawn_blocking(move || {
+        collect_devices(include_probes, show_generic_jtag_adapters, &jlink_sdk_path)
     })
     .await
-    .map_err(|error| format!("设备扫描后台任务失败: {error}"))
+    .map_err(|error| format!("设备扫描后台任务失败: {error}"))?;
+    for warning in warnings {
+        transport::emit(&app, "warning", "system", Vec::new(), warning);
+    }
+    Ok(devices)
 }
 
 #[tauri::command]
@@ -118,9 +125,15 @@ fn collect_devices(
     include_probes: bool,
     show_generic_jtag_adapters: bool,
     jlink_sdk_path: &str,
-) -> Vec<DeviceEntry> {
-    let mut devices = serialport::available_ports()
-        .unwrap_or_default()
+) -> (Vec<DeviceEntry>, Vec<String>) {
+    let (serial_ports, warnings) = match serialport::available_ports() {
+        Ok(ports) => (ports, Vec::new()),
+        Err(error) => (
+            Vec::new(),
+            vec![transport::serial_access_error("枚举串口", "", &error)],
+        ),
+    };
+    let mut devices = serial_ports
         .into_iter()
         .map(|port| DeviceEntry {
             id: port.port_name.clone(),
@@ -168,7 +181,7 @@ fn collect_devices(
             })
         }));
     }
-    devices
+    (devices, warnings)
 }
 
 fn is_jlink_probe(identifier: &str, kind: &str) -> bool {
@@ -230,10 +243,7 @@ fn send_bytes(state: State<'_, AppState>, bytes: Vec<u8>) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn reconfigure_serial(
-    state: State<'_, AppState>,
-    settings: SerialSettings,
-) -> Result<(), String> {
+fn reconfigure_serial(state: State<'_, AppState>, settings: SerialSettings) -> Result<(), String> {
     state
         .transport
         .lock()
@@ -290,7 +300,12 @@ fn allocate_instance() -> Result<InstanceAllocation, String> {
         .ok_or_else(|| "无法确定当前程序所在目录".to_string())?
         .to_path_buf();
     let lock_directory = executable_root.join("locks");
-    fs::create_dir_all(&lock_directory).map_err(|error| format!("无法创建实例锁目录: {error}"))?;
+    fs::create_dir_all(&lock_directory).map_err(|error| {
+        format!(
+            "无法创建实例锁目录 {}: {error}。绿色版程序所在目录必须允许当前用户写入",
+            lock_directory.display()
+        )
+    })?;
 
     for id in 1..=128 {
         let lock_path = lock_directory.join(format!("{executable_hash}_instance_{id}.lock"));
