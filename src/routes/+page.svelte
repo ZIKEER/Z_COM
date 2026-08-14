@@ -698,7 +698,7 @@
   }
 
   function stripAnsi(value: string) {
-    return value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+    return value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\x1b/g, "␛");
   }
 
   function escapeHtml(value: string) {
@@ -706,24 +706,89 @@
   }
 
   function ansiToHtml(value: string) {
-    const colors = ["#20252b", "#c83f49", "#3c884e", "#a87500", "#3569b8", "#8a55a3", "#147d86", "#d9dde2"];
+    const state: { foreground?: string; background?: string; bold: boolean; underline: boolean } = {
+      bold: false,
+      underline: false,
+    };
     let result = "";
     let position = 0;
-    let style = "";
-    const pattern = /\x1b\[([0-9;]*)m/g;
+    const pattern = /\x1b\[([0-?]*)([ -/]*)([@-~])/g;
     for (const match of value.matchAll(pattern)) {
-      result += style ? `<span style="${style}">${escapeHtml(value.slice(position, match.index))}</span>` : escapeHtml(value.slice(position, match.index));
-      const codes = (match[1] || "0").split(";").map(Number);
-      if (codes.includes(0)) style = "";
-      for (const code of codes) {
-        if (code === 1) style += "font-weight:700;";
-        else if (code >= 30 && code <= 37) style += `color:${colors[code - 30]};`;
-        else if (code >= 90 && code <= 97) style += `color:${colors[code - 90]};filter:brightness(1.2);`;
+      result += renderAnsiSegment(value.slice(position, match.index), state);
+      if (match[3] === "m" && !match[2]) {
+        applySgrCodes(state, match[1]);
       }
       position = (match.index ?? 0) + match[0].length;
     }
-    result += style ? `<span style="${style}">${escapeHtml(value.slice(position))}</span>` : escapeHtml(value.slice(position));
+    result += renderAnsiSegment(value.slice(position), state);
     return result;
+  }
+
+  function renderAnsiSegment(value: string, state: { foreground?: string; background?: string; bold: boolean; underline: boolean }) {
+    const content = escapeHtml(value.replace(/\x1b/g, "␛"));
+    if (!content) return "";
+    const styles = [
+      state.foreground ? `color:${state.foreground}` : "",
+      state.background ? `background-color:${state.background}` : "",
+      state.bold ? "font-weight:700" : "",
+      state.underline ? "text-decoration:underline" : "",
+    ].filter(Boolean);
+    return styles.length ? `<span style="${styles.join(";")}">${content}</span>` : content;
+  }
+
+  function applySgrCodes(
+    state: { foreground?: string; background?: string; bold: boolean; underline: boolean },
+    parameters: string,
+  ) {
+    const codes = (parameters || "0").split(";").map((value) => value === "" ? 0 : Number(value));
+    for (let index = 0; index < codes.length; index += 1) {
+      const code = codes[index];
+      if (!Number.isInteger(code)) continue;
+      if (code === 0) {
+        state.foreground = undefined;
+        state.background = undefined;
+        state.bold = false;
+        state.underline = false;
+      } else if (code === 1) state.bold = true;
+      else if (code === 4) state.underline = true;
+      else if (code === 22) state.bold = false;
+      else if (code === 24) state.underline = false;
+      else if (code >= 30 && code <= 37) state.foreground = ansiColor(code - 30);
+      else if (code === 39) state.foreground = undefined;
+      else if (code >= 40 && code <= 47) state.background = ansiColor(code - 40);
+      else if (code === 49) state.background = undefined;
+      else if (code >= 90 && code <= 97) state.foreground = ansiColor(code - 90 + 8);
+      else if (code >= 100 && code <= 107) state.background = ansiColor(code - 100 + 8);
+      else if (code === 38 || code === 48) {
+        const target = code === 38 ? "foreground" : "background";
+        if (codes[index + 1] === 5 && isByte(codes[index + 2])) {
+          state[target] = ansiColor(codes[index + 2]);
+          index += 2;
+        } else if (codes[index + 1] === 2 && codes.slice(index + 2, index + 5).every(isByte)) {
+          state[target] = `rgb(${codes[index + 2]},${codes[index + 3]},${codes[index + 4]})`;
+          index += 4;
+        }
+      }
+    }
+  }
+
+  function isByte(value: number) {
+    return Number.isInteger(value) && value >= 0 && value <= 255;
+  }
+
+  function ansiColor(index: number) {
+    const palette = [
+      "#20252b", "#c83f49", "#3c884e", "#a87500", "#3569b8", "#8a55a3", "#147d86", "#d9dde2",
+      "#6b7280", "#ff6b74", "#62b875", "#e0b43c", "#6495e5", "#b981cf", "#35aab5", "#ffffff",
+    ];
+    if (index < 16) return palette[index];
+    if (index <= 231) {
+      const value = index - 16;
+      const levels = [0, 95, 135, 175, 215, 255];
+      return `rgb(${levels[Math.floor(value / 36)]},${levels[Math.floor(value / 6) % 6]},${levels[value % 6]})`;
+    }
+    const gray = 8 + (Math.min(index, 255) - 232) * 10;
+    return `rgb(${gray},${gray},${gray})`;
   }
 </script>
 
