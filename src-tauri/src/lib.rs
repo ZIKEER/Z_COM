@@ -14,7 +14,9 @@ use std::{
 
 use fs2::FileExt;
 use logger::Logger;
-use models::{AppConfig, BootstrapData, ConnectRequest, DeviceEntry, ExtendedSendConfig};
+use models::{
+    AppConfig, BootstrapData, ConnectRequest, DeviceEntry, ExtendedSendConfig, SerialSettings,
+};
 use probe_rs::probe::list::Lister;
 use tauri::{AppHandle, Manager, State};
 use transport::TransportManager;
@@ -168,6 +170,18 @@ fn send_bytes(state: State<'_, AppState>, bytes: Vec<u8>) -> Result<(), String> 
 }
 
 #[tauri::command]
+fn reconfigure_serial(
+    state: State<'_, AppState>,
+    settings: SerialSettings,
+) -> Result<(), String> {
+    state
+        .transport
+        .lock()
+        .map_err(lock_error)?
+        .reconfigure_serial(settings)
+}
+
+#[tauri::command]
 fn save_config(state: State<'_, AppState>, config: AppConfig) -> Result<(), String> {
     storage::save_config(&state.config_directory, &config).map_err(|error| error.to_string())?;
     *state.config.lock().map_err(lock_error)? = config;
@@ -280,6 +294,7 @@ pub fn run() {
             connect_transport,
             disconnect_transport,
             send_bytes,
+            reconfigure_serial,
             save_config,
             save_extended,
             read_extended_file,

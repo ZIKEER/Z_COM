@@ -571,15 +571,38 @@
   }
 
   async function applySettings() {
-    config = structuredClone($state.snapshot(draftConfig));
-    sidebarOpen = config.preset_panel_visible = sidebarOpen;
+    const previousConfig = structuredClone($state.snapshot(config));
+    const candidate = structuredClone($state.snapshot(draftConfig));
+    candidate.preset_panel_visible = sidebarOpen;
+    let serialReconfigured = false;
     try {
-      await invoke("save_config", { config });
+      if (connected && mode === "serial") {
+        await invoke("reconfigure_serial", { settings: serialSettings(candidate) });
+        serialReconfigured = true;
+      }
+      await invoke("save_config", { config: candidate });
+      config = candidate;
       settingsOpen = false;
       await refreshDevices();
     } catch (error) {
+      if (serialReconfigured) {
+        try {
+          await invoke("reconfigure_serial", { settings: serialSettings(previousConfig) });
+        } catch {}
+      }
       showError(error);
     }
+  }
+
+  function serialSettings(value: AppConfig) {
+    return {
+      baudRate: Number(value.baudrate),
+      dataBits: value.databits,
+      stopBits: value.stopbits,
+      parity: value.parity,
+      flowControl: value.flowcontrol,
+      frameTimeout: value.frame_timeout,
+    };
   }
 
   async function refreshCustomProbeTargets() {

@@ -17,7 +17,7 @@ use probe_rs::{
 use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::models::{ConnectRequest, TransportEvent};
+use crate::models::{ConnectRequest, SerialSettings, TransportEvent};
 
 const EVENT_NAME: &str = "transport-event";
 const READ_BUFFER_SIZE: usize = 8192;
@@ -25,12 +25,14 @@ const FRAME_EMIT_THRESHOLD: usize = 4096;
 
 pub(crate) enum WorkerCommand {
     Write(Vec<u8>),
+    ReconfigureSerial(SerialSettings, Sender<Result<(), String>>),
     Stop,
 }
 
 struct Worker {
     commands: Sender<WorkerCommand>,
     handle: JoinHandle<()>,
+    is_serial: bool,
 }
 
 #[derive(Default)]
@@ -41,6 +43,7 @@ pub struct TransportManager {
 impl TransportManager {
     pub fn connect(&mut self, app: AppHandle, request: ConnectRequest) {
         self.disconnect();
+        let is_serial = request.transport == "serial";
         let (commands, receiver) = mpsc::channel();
         let handle = thread::spawn(move || {
             let result = match request.transport.as_str() {
@@ -57,7 +60,11 @@ impl TransportManager {
             }
             emit(&app, "disconnected", "system", Vec::new(), "连接已关闭");
         });
-        self.worker = Some(Worker { commands, handle });
+        self.worker = Some(Worker {
+            commands,
+            handle,
+            is_serial,
+        });
     }
 
     pub fn send(&self, bytes: Vec<u8>) -> Result<(), String> {
@@ -66,6 +73,21 @@ impl TransportManager {
             .commands
             .send(WorkerCommand::Write(bytes))
             .map_err(|_| "连接线程已退出".to_string())
+    }
+
+    pub fn reconfigure_serial(&self, settings: SerialSettings) -> Result<(), String> {
+        let worker = self.worker.as_ref().ok_or("当前没有活动连接")?;
+        if !worker.is_serial {
+            return Err("当前活动连接不是串口".into());
+        }
+        let (response_sender, response_receiver) = mpsc::channel();
+        worker
+            .commands
+            .send(WorkerCommand::ReconfigureSerial(settings, response_sender))
+            .map_err(|_| "串口连接线程已退出".to_string())?;
+        response_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| "串口参数更新超时".to_string())?
     }
 
     pub fn disconnect(&mut self) {
@@ -104,6 +126,10 @@ impl FrameBuffer {
         self.started.get_or_insert(now);
         self.last_received = Some(now);
         self.bytes.extend_from_slice(data);
+    }
+
+    fn set_timeout(&mut self, timeout_ms: u64) {
+        self.timeout = Duration::from_millis(timeout_ms.max(1));
     }
 
     pub(crate) fn should_flush(&self) -> bool {
@@ -154,7 +180,7 @@ fn run_serial(
     let mut frame = FrameBuffer::new(request.frame_timeout);
     let mut read_buffer = [0_u8; READ_BUFFER_SIZE];
     loop {
-        if handle_serial_commands(app, commands, port.as_mut())? {
+        if handle_serial_commands(app, commands, port.as_mut(), &mut frame)? {
             break;
         }
         match port.read(&mut read_buffer) {
@@ -175,6 +201,7 @@ fn handle_serial_commands(
     app: &AppHandle,
     commands: &Receiver<WorkerCommand>,
     port: &mut dyn SerialPort,
+    frame: &mut FrameBuffer,
 ) -> Result<bool, String> {
     loop {
         match commands.try_recv() {
@@ -183,10 +210,70 @@ fn handle_serial_commands(
                     .map_err(|error| format!("串口发送失败: {error}"))?;
                 emit(app, "data", "sent", bytes, "");
             }
+            Ok(WorkerCommand::ReconfigureSerial(settings, response)) => {
+                let result = apply_serial_settings(port, &settings);
+                match &result {
+                    Ok(()) => {
+                        frame.set_timeout(settings.frame_timeout);
+                        emit(
+                            app,
+                            "info",
+                            "system",
+                            Vec::new(),
+                            format!(
+                                "串口参数已更新：{} baud，{} 数据位，{} 停止位，{}，{}",
+                                settings.baud_rate,
+                                settings.data_bits,
+                                settings.stop_bits,
+                                settings.parity,
+                                settings.flow_control
+                            ),
+                        );
+                    }
+                    Err(error) => emit(
+                        app,
+                        "warning",
+                        "system",
+                        Vec::new(),
+                        format!("串口参数更新失败，已恢复原值：{error}"),
+                    ),
+                }
+                let _ = response.send(result);
+            }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => return Ok(true),
             Err(TryRecvError::Empty) => return Ok(false),
         }
     }
+}
+
+fn apply_serial_settings(
+    port: &mut dyn SerialPort,
+    settings: &SerialSettings,
+) -> Result<(), String> {
+    let data_bits = parse_data_bits(settings.data_bits)?;
+    let stop_bits = parse_stop_bits(settings.stop_bits)?;
+    let parity = parse_parity(&settings.parity)?;
+    let flow_control = parse_flow_control(&settings.flow_control)?;
+    let old_baud_rate = port.baud_rate().map_err(|error| error.to_string())?;
+    let old_data_bits = port.data_bits().map_err(|error| error.to_string())?;
+    let old_stop_bits = port.stop_bits().map_err(|error| error.to_string())?;
+    let old_parity = port.parity().map_err(|error| error.to_string())?;
+    let old_flow_control = port.flow_control().map_err(|error| error.to_string())?;
+    let result = port
+        .set_baud_rate(settings.baud_rate)
+        .and_then(|_| port.set_data_bits(data_bits))
+        .and_then(|_| port.set_stop_bits(stop_bits))
+        .and_then(|_| port.set_parity(parity))
+        .and_then(|_| port.set_flow_control(flow_control));
+    if let Err(error) = result {
+        let _ = port.set_baud_rate(old_baud_rate);
+        let _ = port.set_data_bits(old_data_bits);
+        let _ = port.set_stop_bits(old_stop_bits);
+        let _ = port.set_parity(old_parity);
+        let _ = port.set_flow_control(old_flow_control);
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 fn run_socket(
@@ -240,6 +327,9 @@ fn run_tcp_stream(
             Ok(WorkerCommand::Write(bytes)) => {
                 write_tcp(stream, &bytes)?;
                 emit(app, "data", "sent", bytes, "");
+            }
+            Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
+                let _ = response.send(Err("当前活动连接不是串口".into()));
             }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
@@ -328,6 +418,9 @@ fn run_tcp_server(
                     );
                 }
             }
+            Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
+                let _ = response.send(Err("当前活动连接不是串口".into()));
+            }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
         }
@@ -415,6 +508,9 @@ fn run_udp(
                         "尚未收到 UDP 客户端数据，无法确定发送地址",
                     );
                 }
+            }
+            Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
+                let _ = response.send(Err("当前活动连接不是串口".into()));
             }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
@@ -525,6 +621,9 @@ fn run_probe_rtt(
             Ok(WorkerCommand::Write(bytes)) => {
                 write_rtt(&mut session, &mut rtt, &bytes)?;
                 emit(app, "data", "sent", bytes, "");
+            }
+            Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
+                let _ = response.send(Err("当前活动连接不是串口".into()));
             }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}

@@ -155,6 +155,17 @@ pub struct ConnectRequest {
     pub probe_reset: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerialSettings {
+    pub baud_rate: u32,
+    pub data_bits: u8,
+    pub stop_bits: f32,
+    pub parity: String,
+    pub flow_control: String,
+    pub frame_timeout: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransportEvent {

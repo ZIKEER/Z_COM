@@ -395,6 +395,9 @@ pub(crate) fn run_rtt(
                     session.recover_rtt();
                 }
             },
+            Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
+                let _ = response.send(Err("当前活动连接不是串口".into()));
+            }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
         }
