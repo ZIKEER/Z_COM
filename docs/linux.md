@@ -35,6 +35,14 @@ Wayland 和 X11 均由 GTK/WebKitGTK 提供。个别桌面环境如遇 WebView �
 GDK_BACKEND=x11 ./Z_COM
 ```
 
+WSLg 中如果 Mesa/Zink 无法初始化，可仅在诊断时强制软件渲染：
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 ./Z_COM
+```
+
+该参数是 WSLg 图形兼容性方案，不应默认用于真实 Linux 桌面。
+
 ## 串口权限
 
 常见串口设备为 `/dev/ttyUSB*`、`/dev/ttyACM*`。Ubuntu 通常由 `dialout` 组管理：
@@ -53,4 +61,4 @@ J-Link 继续使用 SEGGER Linux Software Pack 和 `libjlinkarm.so`。可在“�
 
 ## 发布验收
 
-Linux 正式发布前必须在非 WSL 桌面系统完成 README 中的最低验收矩阵，至少覆盖一个真实串口、一个 probe-rs 探针，以及有/无 SEGGER SDK 两种启动环境。
+Linux 正式发布前必须在非 WSL 桌面系统完成[跨平台最低验收矩阵](cross-platform.md)，至少覆盖一个真实串口、一个 probe-rs 探针，以及有/无 SEGGER SDK 两种启动环境。

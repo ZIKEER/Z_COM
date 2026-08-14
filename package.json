@@ -10,6 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "pack": "node scripts/pack.mjs",
+    "release:stage": "node scripts/stage-release.mjs",
     "tauri": "tauri"
   },
   "license": "MIT",
