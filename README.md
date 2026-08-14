@@ -47,4 +47,4 @@ npm run pack
 - [自定义 probe-rs MCU](docs/custom-probe-rs-targets.md)
 - [功能状态与开发路线图](docs/roadmap.md)
 
-当前版本：`0.1.4`。正式功能状态、验收范围和暂不支持项以[路线图](docs/roadmap.md)为准。
+当前版本：`0.1.5`。正式功能状态、验收范围和暂不支持项以[路线图](docs/roadmap.md)为准。
