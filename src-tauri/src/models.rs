@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
+    pub transport_mode: String,
     pub port: String,
     pub baudrate: String,
     pub databits: u8,
@@ -29,11 +30,15 @@ pub struct AppConfig {
     pub preset_panel_visible: bool,
     pub socket_host: String,
     pub socket_port: u16,
+    pub socket_protocol: String,
+    pub socket_role: String,
+    pub selected_probe: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            transport_mode: "serial".into(),
             port: String::new(),
             baudrate: "115200".into(),
             databits: 8,
@@ -55,6 +60,9 @@ impl Default for AppConfig {
             preset_panel_visible: false,
             socket_host: "127.0.0.1".into(),
             socket_port: 8080,
+            socket_protocol: "TCP".into(),
+            socket_role: "Client".into(),
+            selected_probe: String::new(),
         }
     }
 }

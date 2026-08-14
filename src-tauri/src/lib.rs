@@ -8,7 +8,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs::{self, File, OpenOptions},
     hash::{Hash, Hasher},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Mutex,
 };
 
@@ -194,6 +194,12 @@ fn write_extended_file(path: String, extended: ExtendedSendConfig) -> Result<(),
         .map_err(|error| format!("导出扩展发送文件失败: {error}"))
 }
 
+#[tauri::command]
+fn write_text_file(path: String, content: String) -> Result<(), String> {
+    storage::write_text_file(std::path::Path::new(&path), &content)
+        .map_err(|error| format!("保存显示内容失败: {error}"))
+}
+
 fn lock_error<T>(error: std::sync::PoisonError<T>) -> String {
     format!("应用状态锁定失败: {error}")
 }
@@ -204,18 +210,22 @@ struct InstanceAllocation {
     lock: File,
 }
 
-fn allocate_instance(base: &Path) -> Result<InstanceAllocation, String> {
+fn allocate_instance() -> Result<InstanceAllocation, String> {
     let executable = std::env::current_exe()
         .and_then(fs::canonicalize)
         .map_err(|error| format!("无法确定当前程序路径: {error}"))?;
     let mut hasher = DefaultHasher::new();
     executable.hash(&mut hasher);
-    let executable_root = base.join(format!("{:016x}", hasher.finish()));
+    let executable_hash = format!("{:016x}", hasher.finish());
+    let executable_root = executable
+        .parent()
+        .ok_or_else(|| "无法确定当前程序所在目录".to_string())?
+        .to_path_buf();
     let lock_directory = executable_root.join("locks");
     fs::create_dir_all(&lock_directory).map_err(|error| format!("无法创建实例锁目录: {error}"))?;
 
     for id in 1..=128 {
-        let lock_path = lock_directory.join(format!("instance_{id}.lock"));
+        let lock_path = lock_directory.join(format!("{executable_hash}_instance_{id}.lock"));
         let lock = OpenOptions::new()
             .create(true)
             .read(true)
@@ -246,19 +256,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let base_directory = app
-                .path()
-                .app_config_dir()
-                .map_err(|error| format!("无法确定配置目录: {error}"))?;
-            let instance = allocate_instance(&base_directory)?;
+            let instance = allocate_instance()?;
             let config_directory = instance.data_root.join("config");
             fs::create_dir_all(config_directory.join("probe_rs_targets"))
                 .map_err(|error| format!("无法创建自定义 MCU 目录: {error}"))?;
+            let config = storage::load_config(&config_directory);
+            storage::save_config(&config_directory, &config)
+                .map_err(|error| format!("无法初始化设置文件: {error}"))?;
+            let extended = storage::load_extended(&config_directory);
+            storage::save_extended(&config_directory, &extended)
+                .map_err(|error| format!("无法初始化扩展发送文件: {error}"))?;
             let logger = Logger::new(&instance.data_root)
                 .map_err(|error| format!("无法创建日志: {error}"))?;
             app.manage(AppState {
-                config: Mutex::new(storage::load_config(&config_directory)),
-                extended: Mutex::new(storage::load_extended(&config_directory)),
+                config: Mutex::new(config),
+                extended: Mutex::new(extended),
                 config_directory,
                 instance_id: instance.id,
                 _instance_lock: instance.lock,
@@ -278,6 +290,7 @@ pub fn run() {
             save_extended,
             read_extended_file,
             write_extended_file,
+            write_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

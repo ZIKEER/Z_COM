@@ -31,6 +31,7 @@
   type SendMode = "HEX" | "ASCII";
 
   interface AppConfig {
+    transport_mode: TransportMode;
     port: string;
     baudrate: string;
     databits: number;
@@ -52,6 +53,9 @@
     preset_panel_visible: boolean;
     socket_host: string;
     socket_port: number;
+    socket_protocol: "TCP" | "UDP";
+    socket_role: "Client" | "Server";
+    selected_probe: string;
   }
 
   interface ExtendedItem {
@@ -99,6 +103,7 @@
   }
 
   const defaultConfig: AppConfig = {
+    transport_mode: "serial",
     port: "",
     baudrate: "115200",
     databits: 8,
@@ -120,6 +125,9 @@
     preset_panel_visible: false,
     socket_host: "127.0.0.1",
     socket_port: 8080,
+    socket_protocol: "TCP",
+    socket_role: "Client",
+    selected_probe: "",
   };
 
   let config = $state<AppConfig>({ ...defaultConfig });
@@ -130,8 +138,8 @@
   });
   let devices = $state<DeviceEntry[]>([]);
   let mode = $state<TransportMode>("serial");
-  let socketProtocol = $state("TCP");
-  let socketRole = $state("Client");
+  let socketProtocol = $state<"TCP" | "UDP">("TCP");
+  let socketRole = $state<"Client" | "Server">("Client");
   let selectedProbe = $state("");
   let connected = $state(false);
   let connecting = $state(false);
@@ -152,7 +160,7 @@
   let receiveView: HTMLPreElement;
   let extendedRunning = $state(false);
   let stopExtended = false;
-  let version = $state("0.1.0");
+  let version = $state("0.1.2");
   let dataDirectory = $state("");
   let probeTargetDirectory = $state("");
   let customProbeTargets = $state<string[]>([]);
@@ -178,6 +186,10 @@
         probeTargetDirectory = data.probeTargetDirectory;
         instanceId = data.instanceId;
         sidebarOpen = data.config.preset_panel_visible;
+        mode = data.config.transport_mode;
+        socketProtocol = data.config.socket_protocol;
+        socketRole = data.config.socket_role;
+        selectedProbe = data.config.selected_probe;
         await refreshCustomProbeTargets();
         await refreshDevices();
       } catch (error) {
@@ -198,8 +210,17 @@
     errorText = "";
     try {
       devices = await invoke<DeviceEntry[]>("list_devices");
-      if (!config.port && serialDevices.length) config.port = serialDevices[0].id;
-      if (!selectedProbe && probeDevices.length) selectedProbe = probeDevices[0].id;
+      let configChanged = false;
+      if (serialDevices.length && !serialDevices.some((device) => device.id === config.port)) {
+        config.port = serialDevices[0].id;
+        configChanged = true;
+      }
+      if (probeDevices.length && !probeDevices.some((device) => device.id === selectedProbe)) {
+        selectedProbe = probeDevices[0].id;
+        config.selected_probe = selectedProbe;
+        configChanged = true;
+      }
+      if (configChanged) await savePreferences();
     } catch (error) {
       showError(error);
     }
@@ -266,18 +287,20 @@
     } else if (event.kind === "data") {
       if (event.direction === "received") {
         receivedCount += event.bytes.length;
-        appendReceive(new Uint8Array(event.bytes));
+        appendData(new Uint8Array(event.bytes), "received");
       } else if (event.direction === "sent") {
         sentCount += event.bytes.length;
+        appendData(new Uint8Array(event.bytes), "sent");
       }
     }
   }
 
-  function appendReceive(bytes: Uint8Array) {
+  function appendData(bytes: Uint8Array, direction: "received" | "sent") {
     const now = new Date();
     const timestamp = now.toLocaleTimeString("zh-CN", { hour12: false }) + `.${String(now.getMilliseconds()).padStart(3, "0")}`;
+    const arrow = direction === "received" ? "←" : "→";
     if (config.display_mode === "MIXED") {
-      appendMixedReceive(bytes, timestamp);
+      appendMixedData(bytes, timestamp, arrow);
       return;
     }
     let content: string;
@@ -288,12 +311,18 @@
     }
 
     const chunks = displayLines(content);
-    const newLines = chunks.map((chunk) => {
-      const text = `[${timestamp}] ${stripAnsi(chunk)}`;
+    const label = config.display_mode === "HEX" ? "HEX:" : "ASCII:";
+    const labelClass = config.display_mode === "HEX" ? "display-label-hex" : "display-label-ascii";
+    const newLines = chunks.map((chunk, index) => {
+      const plainContent = stripAnsi(chunk);
       const contentHtml = config.display_ansi && config.display_mode === "ASCII"
         ? ansiToHtml(chunk)
-        : escapeHtml(stripAnsi(chunk));
-      const html = `<span class="display-timestamp">[${timestamp}]</span> <span class="display-data">${contentHtml}</span>`;
+        : escapeHtml(plainContent);
+      if (index > 0) {
+        return { id: ++lineId, text: plainContent, html: `<span class="display-data">${contentHtml}</span>` };
+      }
+      const text = `[${timestamp}] ${arrow} ${label} ${plainContent}`;
+      const html = `<span class="display-timestamp">[${timestamp}]</span> <span class="display-arrow">${arrow}</span> <span class="display-label ${labelClass}">${label}</span> <span class="display-data">${contentHtml}</span>`;
       return { id: ++lineId, text, html };
     });
     receiveLines = [...receiveLines, ...newLines].slice(-5000);
@@ -302,9 +331,9 @@
     }
   }
 
-  function appendMixedReceive(bytes: Uint8Array, timestamp: string) {
+  function appendMixedData(bytes: Uint8Array, timestamp: string, arrow: "←" | "→") {
     const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ");
-    const asciiLines = displayLines(displayAscii(bytes, false));
+    const asciiLines = displayLines(displayAscii(bytes, config.display_ansi));
     const newLines = [
       {
         id: ++lineId,
@@ -313,16 +342,20 @@
       },
       {
         id: ++lineId,
-        text: `← HEX: ${hex}`,
-        html: `<span class="display-arrow">←</span> <span class="display-label display-label-hex">HEX:</span> <span class="display-data">${escapeHtml(hex)}</span>`,
+        text: `${arrow} HEX: ${hex}`,
+        html: `<span class="display-arrow">${arrow}</span> <span class="display-label display-label-hex">HEX:</span> <span class="display-data">${escapeHtml(hex)}</span>`,
       },
-      ...asciiLines.map((line, index) => ({
-        id: ++lineId,
-        text: index === 0 ? `← ASCII: ${stripAnsi(line)}` : stripAnsi(line),
-        html: index === 0
-          ? `<span class="display-arrow">←</span> <span class="display-label display-label-ascii">ASCII:</span> <span class="display-data">${escapeHtml(stripAnsi(line))}</span>`
-          : `<span class="display-data">${escapeHtml(stripAnsi(line))}</span>`,
-      })),
+      ...asciiLines.map((line, index) => {
+        const plainContent = stripAnsi(line);
+        const contentHtml = config.display_ansi ? ansiToHtml(line) : escapeHtml(plainContent);
+        return {
+          id: ++lineId,
+          text: index === 0 ? `${arrow} ASCII: ${plainContent}` : plainContent,
+          html: index === 0
+            ? `<span class="display-arrow">${arrow}</span> <span class="display-label display-label-ascii">ASCII:</span> <span class="display-data">${contentHtml}</span>`
+            : `<span class="display-data">${contentHtml}</span>`,
+        };
+      }),
     ];
     receiveLines = [...receiveLines, ...newLines].slice(-5000);
     if (config.auto_scroll) {
@@ -354,7 +387,7 @@
     event.preventDefault();
     receiveContextSelection = window.getSelection()?.toString() ?? "";
     const menuWidth = 190;
-    const menuHeight = 150;
+    const menuHeight = 182;
     receiveContextMenu = {
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 6),
       y: Math.min(event.clientY, window.innerHeight - menuHeight - 6),
@@ -394,6 +427,11 @@
     clearReceive();
   }
 
+  function saveReceiveFromContextMenu() {
+    receiveContextMenu = null;
+    void saveReceiveContent();
+  }
+
   async function toggleAnsiFromContextMenu() {
     receiveContextMenu = null;
     config.display_ansi = !config.display_ansi;
@@ -415,7 +453,8 @@
   async function sendExtendedItem(item: ExtendedItem) {
     if (!connected) return showError("请先建立连接");
     try {
-      const bytes = encodeSend(item.data, item.is_hex ? "HEX" : "ASCII", false);
+      const content = item.is_hex ? item.data : decodeAsciiEscapes(item.data);
+      const bytes = encodeSend(content, item.is_hex ? "HEX" : "ASCII", false);
       await invoke("send_bytes", { bytes: Array.from(bytes) });
     } catch (error) {
       showError(error);
@@ -493,6 +532,34 @@
     }
   }
 
+  async function saveReceiveContent() {
+    if (!receiveLines.length) return;
+    try {
+      const now = new Date();
+      const stamp = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+        "_",
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0"),
+        String(now.getSeconds()).padStart(2, "0"),
+      ].join("");
+      const path = await save({
+        defaultPath: `Z_COM_receive_${stamp}.txt`,
+        filters: [{ name: "文本文件", extensions: ["txt", "log"] }],
+      });
+      if (path) {
+        await invoke("write_text_file", {
+          path,
+          content: `${receiveLines.map((line) => line.text).join("\n")}\n`,
+        });
+      }
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   async function importExtended() {
     try {
       const path = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
@@ -538,6 +605,14 @@
     }
   }
 
+  async function openDataDirectory() {
+    try {
+      await openPath(dataDirectory);
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   async function updateDisplayMode(value: DisplayMode) {
     config.display_mode = value;
     await savePreferences();
@@ -573,10 +648,42 @@
     return result;
   }
 
+  function decodeAsciiEscapes(value: string) {
+    return value.replace(/\\(?:x([0-9a-fA-F]{2})|([rnt0\\]))/g, (match, hex: string | undefined, simple: string | undefined) => {
+      if (hex) return String.fromCharCode(Number.parseInt(hex, 16));
+      return ({ r: "\r", n: "\n", t: "\t", 0: "\0", "\\": "\\" } as Record<string, string>)[simple ?? ""] ?? match;
+    });
+  }
+
   function setMode(value: TransportMode) {
     if (connected || connecting) return;
     mode = value;
+    config.transport_mode = value;
     errorText = "";
+    void savePreferences();
+  }
+
+  function setSocketProtocol(value: "TCP" | "UDP") {
+    if (connected || connecting) return;
+    socketProtocol = config.socket_protocol = value;
+    void savePreferences();
+  }
+
+  function setSocketRole(value: "Client" | "Server") {
+    if (connected || connecting) return;
+    socketRole = config.socket_role = value;
+    void savePreferences();
+  }
+
+  function persistSelectedProbe() {
+    config.selected_probe = selectedProbe;
+    void savePreferences();
+  }
+
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    config.preset_panel_visible = sidebarOpen;
+    void savePreferences();
   }
 
   function clearReceive() {
@@ -641,18 +748,18 @@
 
     <div class="connection-fields">
       {#if mode === "serial"}
-        <label><span>设备</span><select bind:value={config.port} disabled={connected}>{#each serialDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
-        <label class="short"><span>波特率</span><select bind:value={config.baudrate} disabled={connected}>{#each ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"] as baud}<option>{baud}</option>{/each}</select></label>
+        <label><span>设备</span><select bind:value={config.port} onchange={savePreferences} disabled={connected}>{#each serialDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
+        <label class="short"><span>波特率</span><select bind:value={config.baudrate} onchange={savePreferences} disabled={connected}>{#each ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"] as baud}<option>{baud}</option>{/each}</select></label>
       {:else if mode === "socket"}
-        <div class="mini-switch"><button class:active={socketProtocol === "TCP"} onclick={() => socketProtocol = "TCP"}>TCP</button><button class:active={socketProtocol === "UDP"} onclick={() => socketProtocol = "UDP"}>UDP</button></div>
-        <div class="mini-switch"><button class:active={socketRole === "Client"} onclick={() => socketRole = "Client"}>客户端</button><button class:active={socketRole === "Server"} onclick={() => socketRole = "Server"}>服务端</button></div>
-        <label class="host"><span>地址</span><input bind:value={config.socket_host} disabled={connected} /></label>
-        <label class="port"><span>端口</span><input type="number" min="1" max="65535" bind:value={config.socket_port} disabled={connected} /></label>
+        <div class="mini-switch"><button class:active={socketProtocol === "TCP"} onclick={() => setSocketProtocol("TCP")}>TCP</button><button class:active={socketProtocol === "UDP"} onclick={() => setSocketProtocol("UDP")}>UDP</button></div>
+        <div class="mini-switch"><button class:active={socketRole === "Client"} onclick={() => setSocketRole("Client")}>客户端</button><button class:active={socketRole === "Server"} onclick={() => setSocketRole("Server")}>服务端</button></div>
+        <label class="host"><span>地址</span><input bind:value={config.socket_host} onblur={savePreferences} disabled={connected} /></label>
+        <label class="port"><span>端口</span><input type="number" min="1" max="65535" bind:value={config.socket_port} onblur={savePreferences} disabled={connected} /></label>
       {:else}
-        <label class="probe-select"><span>调试探针</span><select bind:value={selectedProbe} disabled={connected}>{#each probeDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
-        <label class="chip"><span>目标芯片</span><input list="chip-history" bind:value={config.probe_chip} placeholder="例如 nRF52840_xxAA" disabled={connected} /></label>
+        <label class="probe-select"><span>调试探针</span><select bind:value={selectedProbe} onchange={persistSelectedProbe} disabled={connected}>{#each probeDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
+        <label class="chip"><span>目标芯片</span><input list="chip-history" bind:value={config.probe_chip} onblur={savePreferences} placeholder="例如 nRF52840_xxAA" disabled={connected} /></label>
         <datalist id="chip-history">{#each probeChipOptions as chip}<option value={chip}></option>{/each}</datalist>
-        <label class="reset-check"><input type="checkbox" bind:checked={config.probe_reset} disabled={connected} />连接后复位</label>
+        <label class="reset-check"><input type="checkbox" bind:checked={config.probe_reset} onchange={savePreferences} disabled={connected} />连接后复位</label>
       {/if}
     </div>
 
@@ -661,7 +768,7 @@
         {#if connected}<Link2Off size={17} />断开{:else}<Link size={17} />{connecting ? "连接中" : "连接"}{/if}
       </button>
       <button class="icon-button" title="更多设置" onclick={openSettings}><Settings size={17} /></button>
-      <button class="icon-button" class:active={sidebarOpen} title="扩展发送" onclick={() => sidebarOpen = !sidebarOpen}>{#if sidebarOpen}<ChevronRight size={17} />{:else}<ChevronLeft size={17} />{/if}</button>
+      <button class="icon-button" class:active={sidebarOpen} title="扩展发送" onclick={toggleSidebar}>{#if sidebarOpen}<ChevronRight size={17} />{:else}<ChevronLeft size={17} />{/if}</button>
     </div>
   </header>
 
@@ -680,6 +787,7 @@
         </div>
         <label class="inline-check"><input type="checkbox" bind:checked={config.auto_scroll} onchange={savePreferences} />自动滚动</label>
         <span class="toolbar-spacer"></span>
+        <button class="icon-button subtle" title="保存当前显示内容" onclick={saveReceiveContent} disabled={!receiveLines.length}><Download size={16} /></button>
         <button class="icon-button subtle" title="清空接收区" onclick={clearReceive}><Eraser size={16} /></button>
       </div>
       <pre class="receive-output" bind:this={receiveView} aria-label="接收数据" oncontextmenu={showReceiveContextMenu}>{@html receiveHtml}</pre>
@@ -700,7 +808,7 @@
               {#each extended.items as item, index (item.id)}
                 <tr>
                   <td><input aria-label="HEX 格式" type="checkbox" bind:checked={item.is_hex} onchange={persistExtended} /></td>
-                  <td><input class="item-data" aria-label="发送数据" bind:value={item.data} onblur={persistExtended} /><input class="item-comment" aria-label="注释" placeholder="注释" bind:value={item.comment} onblur={persistExtended} /></td>
+                  <td><input class="item-data" aria-label="发送数据" title={item.is_hex ? "输入 HEX 字节，例如 01 03 00 00" : "支持转义：\\r  \\n  \\t  \\0  \\\\  \\xNN"} placeholder={item.is_hex ? "HEX 字节" : "ASCII，支持 \\r \\n \\t \\0 \\xNN"} bind:value={item.data} onblur={persistExtended} /><input class="item-comment" aria-label="注释" placeholder="注释" bind:value={item.comment} onblur={persistExtended} /></td>
                   <td><input aria-label="发送序号" type="number" min="0" bind:value={item.sort_order} onblur={persistExtended} /></td>
                   <td><input aria-label="发送延时" type="number" min="0" bind:value={item.delay} onblur={persistExtended} /></td>
                   <td class="row-actions">
@@ -719,7 +827,7 @@
           <label><input type="checkbox" bind:checked={extended.settings.multi_send} onchange={persistExtended} />多条发送</label>
           <label><input type="checkbox" bind:checked={extended.settings.loop_send} onchange={persistExtended} />循环发送</label>
           <button class="run-button" onclick={toggleExtendedRun}>{#if extendedRunning}<Square size={15} fill="currentColor" />停止{:else}<Play size={15} fill="currentColor" />启动发送{/if}</button>
-          <span class="help" title="序号 0 不参与发送；序号决定发送顺序；延时单位为毫秒"><CircleHelp size={15} /></span>
+          <span class="help" title="ASCII 支持 \\r、\\n、\\t、\\0、\\、\\xNN 转义；序号 0 不参与发送；序号决定发送顺序；延时单位为毫秒"><CircleHelp size={15} /></span>
         </div>
       </aside>
     {/if}
@@ -759,7 +867,7 @@
         <fieldset>
           <legend>接收与显示</legend>
           <label>帧超时 (ms)<input type="number" min="1" max="5000" bind:value={draftConfig.frame_timeout} /></label>
-          <label class="check-row"><input type="checkbox" bind:checked={draftConfig.display_ansi} />ANSI 颜色显示（仅 ASCII）</label>
+          <label class="check-row"><input type="checkbox" bind:checked={draftConfig.display_ansi} />ANSI 颜色显示（ASCII / HEX+ASCII）</label>
           <label class="check-row"><input type="checkbox" bind:checked={draftConfig.auto_scroll} />自动滚动</label>
         </fieldset>
         <fieldset class="probe-settings">
@@ -776,6 +884,12 @@
             Windows 下部分非 J-Link 探针需要 WinUSB 驱动；J-Link 无需切换 SEGGER 驱动。
           </p>
         </fieldset>
+        <fieldset class="data-settings">
+          <legend>数据存储</legend>
+          <p>设置自动保存到 <code>settings.json</code>，扩展发送自动保存到 <code>extended_send.json</code>；通信日志自动写入配置目录同级的 <code>logs</code> 文件夹。</p>
+          <div class="storage-path" title={dataDirectory}>{dataDirectory}</div>
+          <button type="button" onclick={openDataDirectory}>打开配置目录</button>
+        </fieldset>
       </div>
       <footer><button onclick={() => settingsOpen = false}>取消</button><button class="primary" onclick={applySettings}>应用</button></footer>
     </div>
@@ -788,6 +902,7 @@
     <button role="menuitem" disabled={!receiveContextSelection} onclick={copyReceiveSelection}><span>复制</span><kbd>Ctrl+C</kbd></button>
     <button role="menuitem" disabled={!receiveLines.length} onclick={selectAllReceive}><span>全选</span><kbd>Ctrl+A</kbd></button>
     <div class="context-separator"></div>
+    <button role="menuitem" disabled={!receiveLines.length} onclick={saveReceiveFromContextMenu}><span>保存显示内容...</span></button>
     <button role="menuitem" disabled={!receiveLines.length} onclick={clearReceiveFromContextMenu}><span>清空接收</span></button>
     <button role="menuitemcheckbox" aria-checked={config.display_ansi} onclick={toggleAnsiFromContextMenu}><span><i>{config.display_ansi ? "✓" : ""}</i>ANSI 颜色显示</span></button>
   </div>
@@ -897,9 +1012,13 @@
   fieldset input, fieldset select { height: 29px; padding: 3px 6px; min-width: 0; width: 100%; }
   fieldset .check-row { flex-direction: row; align-items: center; grid-column: 1 / -1; }
   fieldset .check-row input { width: auto; height: auto; }
-  .probe-settings { grid-column: 1 / -1; }
+  .probe-settings, .data-settings { grid-column: 1 / -1; }
   .driver-note { grid-column: 1 / -1; margin: 2px 0 0; color: #6d5d31; background: #f5efdc; border-left: 3px solid #c49a38; padding: 6px 8px; font-size: 12px; }
   .driver-note button { margin: 0 3px; min-height: 24px; padding: 0 7px; }
+  .data-settings p { grid-column: 1 / -1; margin: 0; color: #56616a; line-height: 1.6; }
+  .data-settings code { color: #7a3f00; font-family: "Cascadia Mono", Consolas, monospace; }
+  .storage-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 8px; color: #39434a; background: #fff; border: 1px solid #c2c9ce; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+  .data-settings button { min-height: 29px; }
   .settings-dialog > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 8px 12px; border-top: 1px solid #bdc5cb; }
   .settings-dialog > footer button { min-width: 72px; padding: 0 12px; }
   .settings-dialog > footer .primary { background: #4caf50; color: #fff; border-color: #429846; }
@@ -917,7 +1036,7 @@
     .workspace.with-sidebar { grid-template-columns: 1fr; grid-template-rows: minmax(210px, 1fr) minmax(190px, .8fr); }
     .send-pane { margin-top: 4px; }
     .settings-body { grid-template-columns: 1fr; }
-    .probe-settings { grid-column: 1; }
+    .probe-settings, .data-settings { grid-column: 1; }
     .status-path { display: none; }
   }
 </style>

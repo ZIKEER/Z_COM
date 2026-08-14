@@ -1,6 +1,6 @@
 {
   "name": "z-com",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Cross-platform serial, socket and debug probe RTT terminal",
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "pack": "node scripts/pack.mjs",
     "tauri": "tauri"
   },
   "license": "MIT",

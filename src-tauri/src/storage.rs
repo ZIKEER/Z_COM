@@ -32,6 +32,13 @@ pub fn write_extended_file(path: &Path, value: &ExtendedSendConfig) -> io::Resul
     atomic_write_json(path, value)
 }
 
+pub fn write_text_file(path: &Path, value: &str) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, value)
+}
+
 fn load_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
     let bytes = fs::read(path).ok()?;
     serde_json::from_slice(&bytes).ok()
