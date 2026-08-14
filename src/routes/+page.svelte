@@ -266,6 +266,9 @@
   }
 
   function handleTransportEvent(event: TransportEvent) {
+    if (event.kind !== "data" && event.message) {
+      appendEvent(event.kind, event.message);
+    }
     if (event.kind === "connected") {
       connected = true;
       connecting = false;
@@ -295,9 +298,32 @@
     }
   }
 
-  function appendData(bytes: Uint8Array, direction: "received" | "sent") {
+  function appendEvent(kind: string, message: string) {
+    const labels: Record<string, string> = {
+      connected: "连接",
+      disconnected: "断开",
+      error: "错误",
+      warning: "警告",
+      peer: "客户端",
+    };
+    const normalizedKind = Object.hasOwn(labels, kind) ? kind : "info";
+    const label = labels[kind] ?? "提示";
+    const timestamp = currentTimestamp();
+    const text = `[${timestamp}] ◆ ${label}: ${message}`;
+    const html = `<span class="display-timestamp">[${timestamp}]</span> <span class="display-event-marker">◆</span> <span class="display-event display-event-${normalizedKind}">${escapeHtml(label)}: ${escapeHtml(message)}</span>`;
+    receiveLines = [...receiveLines, { id: ++lineId, text, html }].slice(-5000);
+    if (config.auto_scroll) {
+      requestAnimationFrame(() => receiveView?.scrollTo({ top: receiveView.scrollHeight }));
+    }
+  }
+
+  function currentTimestamp() {
     const now = new Date();
-    const timestamp = now.toLocaleTimeString("zh-CN", { hour12: false }) + `.${String(now.getMilliseconds()).padStart(3, "0")}`;
+    return now.toLocaleTimeString("zh-CN", { hour12: false }) + `.${String(now.getMilliseconds()).padStart(3, "0")}`;
+  }
+
+  function appendData(bytes: Uint8Array, direction: "received" | "sent") {
+    const timestamp = currentTimestamp();
     const arrow = direction === "received" ? "←" : "→";
     if (config.display_mode === "MIXED") {
       appendMixedData(bytes, timestamp, arrow);
@@ -933,6 +959,13 @@
   :global(.display-label-hex) { color: #b15c00; }
   :global(.display-label-ascii) { color: #18794e; }
   :global(.display-data) { color: #202020; font-weight: 400; }
+  :global(.display-event-marker) { color: #6b7280; font-weight: 700; }
+  :global(.display-event) { font-weight: 600; }
+  :global(.display-event-connected) { color: #18794e; }
+  :global(.display-event-disconnected), :global(.display-event-info) { color: #5f6b73; }
+  :global(.display-event-error) { color: #b42318; }
+  :global(.display-event-warning) { color: #a15c00; }
+  :global(.display-event-peer) { color: #6f42c1; }
   .context-menu-shield { position: fixed; inset: 0; z-index: 20; width: auto; height: auto; min-height: 0; padding: 0; border: 0; background: transparent; cursor: default; }
   .context-menu-shield:hover:not(:disabled) { border: 0; background: transparent; }
   .receive-context-menu { position: fixed; z-index: 21; width: 190px; padding: 4px; color: #202020; background: #fff; border: 1px solid #a8a8a8; border-radius: 3px; box-shadow: 0 5px 18px rgba(0, 0, 0, .22); }
