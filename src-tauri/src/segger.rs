@@ -72,6 +72,7 @@ type RttWrite = unsafe extern "system" fn(c_uint, *const u8, c_uint) -> c_int;
 
 struct JLinkLibrary {
     _library: Library,
+    loaded_path: PathBuf,
     emu_get_list: EmuGetList,
     emu_select_by_usb_serial: EmuSelectByUsbSerial,
     open_ex: OpenEx,
@@ -89,9 +90,9 @@ struct JLinkLibrary {
 }
 
 impl JLinkLibrary {
-    fn load() -> Result<Self, String> {
+    fn load(configured_path: &str) -> Result<Self, String> {
         let mut errors = Vec::new();
-        for path in library_candidates() {
+        for path in library_candidates(configured_path) {
             let library = match unsafe { Library::new(&path) } {
                 Ok(library) => library,
                 Err(error) => {
@@ -125,6 +126,7 @@ impl JLinkLibrary {
                     rtt_control: symbol!("JLINK_RTTERMINAL_Control", RttControl),
                     rtt_read: symbol!("JLINK_RTTERMINAL_Read", RttRead),
                     rtt_write: symbol!("JLINK_RTTERMINAL_Write", RttWrite),
+                    loaded_path: path,
                     _library: library,
                 });
             }
@@ -146,10 +148,15 @@ struct JLinkSession {
 }
 
 impl JLinkSession {
-    fn new(serial_number: u32, chip: &str, speed: u32) -> Result<Self, String> {
+    fn new(
+        serial_number: u32,
+        chip: &str,
+        speed: u32,
+        configured_path: &str,
+    ) -> Result<Self, String> {
         let chip = CString::new(chip.trim()).map_err(|_| "目标芯片名称包含无效字符")?;
         Ok(Self {
-            api: JLinkLibrary::load()?,
+            api: JLinkLibrary::load(configured_path)?,
             serial_number,
             chip,
             speed,
@@ -310,14 +317,14 @@ impl Drop for JLinkSession {
     }
 }
 
-pub(crate) fn list_devices() -> Result<Vec<DeviceEntry>, String> {
+pub(crate) fn list_devices(configured_path: &str) -> Result<Vec<DeviceEntry>, String> {
     let access = JLINK_ACCESS.get_or_init(|| Mutex::new(()));
     let _guard = match access.try_lock() {
         Ok(guard) => guard,
         Err(TryLockError::WouldBlock) => return Ok(Vec::new()),
         Err(TryLockError::Poisoned(error)) => error.into_inner(),
     };
-    let api = JLinkLibrary::load()?;
+    let api = JLinkLibrary::load(configured_path)?;
     let count = unsafe { (api.emu_get_list)(JLINK_HOST_USB, ptr::null_mut(), 0) };
     if count < 0 {
         return Err(format!("枚举 J-Link 失败，错误码 {count}"));
@@ -351,6 +358,13 @@ pub(crate) fn list_devices() -> Result<Vec<DeviceEntry>, String> {
         .collect())
 }
 
+pub(crate) fn sdk_path(configured_path: &str) -> Result<String, String> {
+    Ok(JLinkLibrary::load(configured_path)?
+        .loaded_path
+        .display()
+        .to_string())
+}
+
 pub(crate) fn run_rtt(
     app: &AppHandle,
     request: &ConnectRequest,
@@ -369,7 +383,12 @@ pub(crate) fn run_rtt(
     let _guard = access
         .try_lock()
         .map_err(|_| "当前程序已有 J-Link 会话正在使用".to_string())?;
-    let mut session = JLinkSession::new(serial_number, &request.probe_chip, request.probe_speed)?;
+    let mut session = JLinkSession::new(
+        serial_number,
+        &request.probe_chip,
+        request.probe_speed,
+        &request.jlink_sdk_path,
+    )?;
     session.open(request.probe_reset)?;
     if !session.wait_for_rtt(commands)? {
         return Ok(());
@@ -455,21 +474,23 @@ fn write_all(session: &JLinkSession, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn library_candidates() -> Vec<PathBuf> {
+fn library_candidates(configured_path: &str) -> Vec<PathBuf> {
     let mut paths = Vec::new();
+    push_library_candidate(&mut paths, configured_path);
+    if let Ok(executable) = env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            push_library_candidate(&mut paths, directory);
+        }
+    }
     if let Some(path) = env::var_os("JLINK_PATH") {
-        let path = PathBuf::from(path);
-        paths.push(if path.is_dir() {
-            path.join(library_name())
-        } else {
-            path
-        });
+        push_library_candidate(&mut paths, PathBuf::from(path));
     }
     #[cfg(target_os = "windows")]
     {
         for variable in ["ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(root) = env::var_os(variable) {
-                paths.push(
+                push_library_candidate(
+                    &mut paths,
                     PathBuf::from(root)
                         .join("SEGGER/JLink")
                         .join(library_name()),
@@ -478,11 +499,32 @@ fn library_candidates() -> Vec<PathBuf> {
         }
     }
     #[cfg(target_os = "linux")]
-    paths.push(PathBuf::from("/opt/SEGGER/JLink").join(library_name()));
+    push_library_candidate(
+        &mut paths,
+        PathBuf::from("/opt/SEGGER/JLink").join(library_name()),
+    );
     #[cfg(target_os = "macos")]
-    paths.push(PathBuf::from("/Applications/SEGGER/JLink").join(library_name()));
-    paths.push(PathBuf::from(library_name()));
+    push_library_candidate(
+        &mut paths,
+        PathBuf::from("/Applications/SEGGER/JLink").join(library_name()),
+    );
+    push_library_candidate(&mut paths, PathBuf::from(library_name()));
     paths
+}
+
+fn push_library_candidate(paths: &mut Vec<PathBuf>, candidate: impl Into<PathBuf>) {
+    let candidate = candidate.into();
+    if candidate.as_os_str().is_empty() {
+        return;
+    }
+    let path = if candidate.is_dir() {
+        candidate.join(library_name())
+    } else {
+        candidate
+    };
+    if !paths.contains(&path) {
+        paths.push(path);
+    }
 }
 
 #[cfg(all(target_os = "windows", target_pointer_width = "64"))]
@@ -517,9 +559,9 @@ mod tests {
 
     #[test]
     fn installed_sdk_can_be_loaded() {
-        if library_candidates().iter().any(|path| path.is_file()) {
-            assert!(JLinkLibrary::load().is_ok());
-            assert!(list_devices().is_ok());
+        if library_candidates("").iter().any(|path| path.is_file()) {
+            assert!(JLinkLibrary::load("").is_ok());
+            assert!(list_devices("").is_ok());
         }
     }
 }

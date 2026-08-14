@@ -47,6 +47,7 @@
     display_ansi: boolean;
     support_probes: boolean;
     show_generic_jtag_adapters: boolean;
+    jlink_sdk_path: string;
     probe_chip: string;
     probe_speed: number;
     probe_reset: boolean;
@@ -123,6 +124,7 @@
     display_ansi: false,
     support_probes: true,
     show_generic_jtag_adapters: false,
+    jlink_sdk_path: "",
     probe_chip: "",
     probe_speed: 4000,
     probe_reset: false,
@@ -179,6 +181,7 @@
   let resizing = $state(false);
   let refreshingDevices = $state(false);
   let refreshingCustomTargets = $state(false);
+  let jlinkSdkStatus = $state("尚未检查");
 
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
@@ -295,6 +298,7 @@
           probeChip: config.probe_chip,
           probeSpeed: config.probe_speed,
           probeReset: config.probe_reset,
+          jlinkSdkPath: config.jlink_sdk_path,
         },
       });
     } catch (error) {
@@ -646,6 +650,37 @@
   function openSettings() {
     draftConfig = structuredClone($state.snapshot(config));
     settingsOpen = true;
+    void refreshJlinkSdkStatus();
+  }
+
+  async function chooseJlinkSdkDirectory() {
+    const path = await open({ directory: true, multiple: false, title: "选择 SEGGER J-Link 安装目录" });
+    if (typeof path === "string") {
+      draftConfig.jlink_sdk_path = path;
+      await refreshJlinkSdkStatus();
+    }
+  }
+
+  async function chooseJlinkSdkLibrary() {
+    const path = await open({
+      multiple: false,
+      title: "选择 SEGGER J-Link 动态库",
+      filters: [{ name: "J-Link 动态库", extensions: ["dll", "so", "dylib"] }],
+    });
+    if (typeof path === "string") {
+      draftConfig.jlink_sdk_path = path;
+      await refreshJlinkSdkStatus();
+    }
+  }
+
+  async function refreshJlinkSdkStatus() {
+    jlinkSdkStatus = "正在检查...";
+    try {
+      const loadedPath = await invoke<string>("check_jlink_sdk", { configuredPath: draftConfig.jlink_sdk_path });
+      jlinkSdkStatus = `已找到：${loadedPath}`;
+    } catch (error) {
+      jlinkSdkStatus = `未找到：${stringifyError(error)}`;
+    }
   }
 
   async function applySettings() {
@@ -1115,6 +1150,11 @@
           <legend>调试探针 / RTT</legend>
           <label class="check-row full"><input type="checkbox" bind:checked={draftConfig.support_probes} />扫描调试探针</label>
           <label class="check-row full"><input type="checkbox" bind:checked={draftConfig.show_generic_jtag_adapters} disabled={!draftConfig.support_probes} />显示通用 FTDI/JTAG 适配器</label>
+          <div class="sdk-path-setting">
+            <label>J-Link SDK 路径<input bind:value={draftConfig.jlink_sdk_path} placeholder="留空自动查找" onblur={refreshJlinkSdkStatus} /></label>
+            <div><button type="button" onclick={chooseJlinkSdkDirectory}>选择目录</button><button type="button" onclick={chooseJlinkSdkLibrary}>选择动态库</button><button type="button" onclick={() => { draftConfig.jlink_sdk_path = ""; void refreshJlinkSdkStatus(); }}>自动查找</button></div>
+            <span title={jlinkSdkStatus}>{jlinkSdkStatus}</span>
+          </div>
           <label>目标芯片<input list="chip-history" bind:value={draftConfig.probe_chip} placeholder="SEGGER / probe-rs 目标名称" /></label>
           <label>SWD 速度 (kHz)<input type="number" min="10" max="50000" bind:value={draftConfig.probe_speed} /></label>
           <p class="driver-note">
@@ -1289,6 +1329,10 @@
   .driver-note { grid-column: 1 / -1; margin: 2px 0 0; color: #6d5d31; background: #f5efdc; border-left: 3px solid #c49a38; padding: 6px 8px; font-size: 12px; }
   .parameter-note { grid-column: 1 / -1; margin: 0; color: #56616a; font-size: 12px; line-height: 1.45; }
   .driver-note button { margin: 0 3px; min-height: 24px; padding: 0 7px; }
+  .sdk-path-setting { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; align-items: end; }
+  .sdk-path-setting > div { display: flex; gap: 5px; }
+  .sdk-path-setting button { min-height: 29px; white-space: nowrap; }
+  .sdk-path-setting > span { grid-column: 1 / -1; color: #667078; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
   .data-settings p { grid-column: 1 / -1; margin: 0; color: #56616a; line-height: 1.6; }
   .data-settings code { color: #7a3f00; font-family: "Cascadia Mono", Consolas, monospace; }
   .storage-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 8px; color: #39434a; background: #fff; border: 1px solid #c2c9ce; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }

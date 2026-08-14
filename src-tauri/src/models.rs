@@ -20,6 +20,7 @@ pub struct AppConfig {
     #[serde(alias = "support_jlink")]
     pub support_probes: bool,
     pub show_generic_jtag_adapters: bool,
+    pub jlink_sdk_path: String,
     #[serde(alias = "rtt_chip")]
     pub probe_chip: String,
     #[serde(alias = "rtt_speed")]
@@ -57,6 +58,7 @@ impl Default for AppConfig {
             display_ansi: false,
             support_probes: true,
             show_generic_jtag_adapters: false,
+            jlink_sdk_path: String::new(),
             probe_chip: String::new(),
             probe_speed: 4000,
             probe_reset: false,
@@ -159,6 +161,7 @@ pub struct ConnectRequest {
     pub probe_chip: String,
     pub probe_speed: u32,
     pub probe_reset: bool,
+    pub jlink_sdk_path: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -85,19 +85,40 @@ fn collect_local_ipv4_addresses() -> Vec<String> {
 
 #[tauri::command]
 async fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceEntry>, String> {
-    let (include_probes, show_generic_jtag_adapters) = state
+    let (include_probes, show_generic_jtag_adapters, jlink_sdk_path) = state
         .config
         .lock()
-        .map(|value| (value.support_probes, value.show_generic_jtag_adapters))
-        .unwrap_or((true, false));
+        .map(|value| {
+            (
+                value.support_probes,
+                value.show_generic_jtag_adapters,
+                value.jlink_sdk_path.clone(),
+            )
+        })
+        .unwrap_or((true, false, String::new()));
     tauri::async_runtime::spawn_blocking(move || {
-        collect_devices(include_probes, show_generic_jtag_adapters)
+        collect_devices(
+            include_probes,
+            show_generic_jtag_adapters,
+            &jlink_sdk_path,
+        )
     })
     .await
     .map_err(|error| format!("设备扫描后台任务失败: {error}"))
 }
 
-fn collect_devices(include_probes: bool, show_generic_jtag_adapters: bool) -> Vec<DeviceEntry> {
+#[tauri::command]
+async fn check_jlink_sdk(configured_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || segger::sdk_path(&configured_path))
+        .await
+        .map_err(|error| format!("J-Link SDK 检查后台任务失败: {error}"))?
+}
+
+fn collect_devices(
+    include_probes: bool,
+    show_generic_jtag_adapters: bool,
+    jlink_sdk_path: &str,
+) -> Vec<DeviceEntry> {
     let mut devices = serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
@@ -111,7 +132,7 @@ fn collect_devices(include_probes: bool, show_generic_jtag_adapters: bool) -> Ve
         .collect::<Vec<_>>();
 
     if include_probes {
-        devices.extend(segger::list_devices().unwrap_or_default());
+        devices.extend(segger::list_devices(jlink_sdk_path).unwrap_or_default());
         devices.extend(Lister::new().list_all().into_iter().filter_map(|probe| {
             if is_jlink_probe(&probe.identifier, &probe.probe_type())
                 || (!show_generic_jtag_adapters
@@ -331,6 +352,7 @@ pub fn run() {
             list_custom_probe_targets,
             list_local_ipv4_addresses,
             list_devices,
+            check_jlink_sdk,
             connect_transport,
             disconnect_transport,
             send_bytes,

@@ -21,7 +21,7 @@ Rust 版本不暴露 RTT 起始地址和范围配置。J-Link 交由 SEGGER SDK 
 3. **两套目标名称相互独立**：J-Link 接受 SEGGER 数据库名称；其他探针使用 probe-rs registry。`probe_rs_targets/*.yaml` 不会扩展 SEGGER 数据库。
 4. **RTT 控制块发现策略不同**：SEGGER SDK 使用厂商实现；probe-rs 根据目标 RAM 描述扫描 `SEGGER RTT` 控制块。
 5. **复位时序因后端而异**：J-Link 使用 SEGGER SDK reset，其他探针使用 probe-rs target sequence。
-6. **J-Link SDK 由用户安装**：安装包不分发 SEGGER DLL。未安装 J-Link Software Pack 时，J-Link 不会出现在列表中；可用 `JLINK_PATH` 指定动态库文件或安装目录。
+6. **J-Link SDK 由用户安装**：绿色版不分发 SEGGER 动态库。未安装 J-Link Software Pack 时，J-Link 不会出现在列表中，但不影响其他通信后端；可在“更多设置”选择动态库文件/安装目录，也兼容 `JLINK_PATH`。
 7. **当前范围仍是通道 0**：与 Python 程序一致，只收发 Up/Down channel 0。
 8. **并行调试需要硬件验收**：SEGGER 后端不主动锁住其他进程，并在烧录或复位令 RTT 暂时消失时持续重试；Keil Halt 不会被当作断线。
 
