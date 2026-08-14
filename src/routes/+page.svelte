@@ -943,6 +943,7 @@
           <label>停止位<select bind:value={draftConfig.stopbits}><option value={1}>1</option><option value={2}>2</option></select></label>
           <label>校验<select bind:value={draftConfig.parity}><option value="None">无</option><option value="Odd">奇校验</option><option value="Even">偶校验</option></select></label>
           <label>流控<select bind:value={draftConfig.flowcontrol}><option value="None">无</option><option value="Software">XON/XOFF</option><option value="Hardware">RTS/CTS</option></select></label>
+          <p class="parameter-note">已列出跨平台串口后端的全部通用选项。1.5 停止位、Mark/Space 校验等非通用能力不提供伪选项；具体组合仍以当前设备驱动支持情况为准。</p>
         </fieldset>
         <fieldset>
           <legend>接收与显示</legend>
@@ -1100,6 +1101,7 @@
   fieldset .check-row input { width: auto; height: auto; }
   .probe-settings, .data-settings { grid-column: 1 / -1; }
   .driver-note { grid-column: 1 / -1; margin: 2px 0 0; color: #6d5d31; background: #f5efdc; border-left: 3px solid #c49a38; padding: 6px 8px; font-size: 12px; }
+  .parameter-note { grid-column: 1 / -1; margin: 0; color: #56616a; font-size: 12px; line-height: 1.45; }
   .driver-note button { margin: 0 3px; min-height: 24px; padding: 0 7px; }
   .data-settings p { grid-column: 1 / -1; margin: 0; color: #56616a; line-height: 1.6; }
   .data-settings code { color: #7a3f00; font-family: "Cascadia Mono", Consolas, monospace; }

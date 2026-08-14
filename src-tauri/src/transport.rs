@@ -840,7 +840,12 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::list_custom_probe_targets;
+    use serialport::{DataBits, FlowControl, Parity, StopBits};
+
+    use super::{
+        list_custom_probe_targets, parse_data_bits, parse_flow_control, parse_parity,
+        parse_stop_bits,
+    };
 
     struct TestDirectory(PathBuf);
 
@@ -897,5 +902,27 @@ flash_algorithms: []
         let targets = list_custom_probe_targets(&directory.0).unwrap();
 
         assert_eq!(targets, vec!["MYCHIP123"]);
+    }
+
+    #[test]
+    fn accepts_all_cross_platform_serial_options() {
+        assert_eq!(parse_data_bits(5).unwrap(), DataBits::Five);
+        assert_eq!(parse_data_bits(6).unwrap(), DataBits::Six);
+        assert_eq!(parse_data_bits(7).unwrap(), DataBits::Seven);
+        assert_eq!(parse_data_bits(8).unwrap(), DataBits::Eight);
+        assert_eq!(parse_stop_bits(1.0).unwrap(), StopBits::One);
+        assert_eq!(parse_stop_bits(2.0).unwrap(), StopBits::Two);
+        assert_eq!(parse_parity("None").unwrap(), Parity::None);
+        assert_eq!(parse_parity("Odd").unwrap(), Parity::Odd);
+        assert_eq!(parse_parity("Even").unwrap(), Parity::Even);
+        assert_eq!(parse_flow_control("None").unwrap(), FlowControl::None);
+        assert_eq!(
+            parse_flow_control("Software").unwrap(),
+            FlowControl::Software
+        );
+        assert_eq!(
+            parse_flow_control("Hardware").unwrap(),
+            FlowControl::Hardware
+        );
     }
 }
