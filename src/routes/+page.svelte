@@ -170,7 +170,7 @@
   let receiveView: HTMLPreElement;
   let extendedRunning = $state(false);
   let stopExtended = false;
-  let version = $state("0.1.2");
+  let version = $state("0.1.3");
   let buildTimestamp = $state(0);
   let dataDirectory = $state("");
   let probeTargetDirectory = $state("");

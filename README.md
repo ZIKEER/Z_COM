@@ -238,7 +238,7 @@ npm run pack
 
 ```text
 dist/
-└── Z_COM_V0.1.2/
+└── Z_COM_V0.1.3/
     ├── Z_COM.exe
     ├── config/
     ├── logs/

@@ -1,6 +1,6 @@
 [package]
 name = "z-com"
-version = "0.1.2"
+version = "0.1.3"
 description = "Z_COM cross-platform communication terminal"
 authors = ["Zack(zzk)"]
 edition = "2024"
