@@ -7,31 +7,29 @@ use std::{
 
 use chrono::Local;
 
-const MAX_LOG_SIZE: u64 = 50 * 1024 * 1024;
-
 pub struct Logger {
     directory: PathBuf,
-    path: PathBuf,
+    date: String,
     writer: BufWriter<File>,
     last_flush: Instant,
-    sequence: u32,
 }
 
 impl Logger {
     pub fn new(data_root: &Path) -> io::Result<Self> {
         let directory = data_root.join("logs");
         fs::create_dir_all(&directory)?;
-        let (path, writer) = open_log(&directory, 0)?;
+        let date = current_date();
+        let writer = open_log(&directory, &date)?;
         Ok(Self {
             directory,
-            path,
+            date,
             writer,
             last_flush: Instant::now(),
-            sequence: 0,
         })
     }
 
     pub fn log_data(&mut self, direction: &str, bytes: &[u8]) {
+        self.switch_date_if_needed();
         let arrow = if direction == "received" { "<-" } else { "->" };
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let hex = bytes
@@ -51,6 +49,7 @@ impl Logger {
     }
 
     pub fn log_event(&mut self, message: &str) {
+        self.switch_date_if_needed();
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let _ = writeln!(self.writer, "[{timestamp}] {message}");
         self.maintain();
@@ -60,13 +59,19 @@ impl Logger {
         if self.last_flush.elapsed() >= Duration::from_secs(1) {
             let _ = self.writer.flush();
             self.last_flush = Instant::now();
-            if fs::metadata(&self.path).is_ok_and(|metadata| metadata.len() >= MAX_LOG_SIZE) {
-                self.sequence += 1;
-                if let Ok((path, writer)) = open_log(&self.directory, self.sequence) {
-                    self.path = path;
-                    self.writer = writer;
-                }
-            }
+        }
+    }
+
+    fn switch_date_if_needed(&mut self) {
+        let date = current_date();
+        if date == self.date {
+            return;
+        }
+        if let Ok(writer) = open_log(&self.directory, &date) {
+            let _ = self.writer.flush();
+            self.writer = writer;
+            self.date = date;
+            self.last_flush = Instant::now();
         }
     }
 }
@@ -77,17 +82,12 @@ impl Drop for Logger {
     }
 }
 
-fn open_log(directory: &Path, sequence: u32) -> io::Result<(PathBuf, BufWriter<File>)> {
-    let suffix = if sequence == 0 {
-        String::new()
-    } else {
-        format!("_{sequence}")
-    };
-    let path = directory.join(format!(
-        "log_{}{}.txt",
-        Local::now().format("%Y-%m-%d_%H%M%S"),
-        suffix
-    ));
+fn current_date() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
+}
+
+fn open_log(directory: &Path, date: &str) -> io::Result<BufWriter<File>> {
+    let path = directory.join(format!("log_{date}.txt"));
     let file = OpenOptions::new().create(true).append(true).open(&path)?;
-    Ok((path, BufWriter::new(file)))
+    Ok(BufWriter::new(file))
 }

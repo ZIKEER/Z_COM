@@ -194,12 +194,6 @@ fn write_extended_file(path: String, extended: ExtendedSendConfig) -> Result<(),
         .map_err(|error| format!("导出扩展发送文件失败: {error}"))
 }
 
-#[tauri::command]
-fn write_text_file(path: String, content: String) -> Result<(), String> {
-    storage::write_text_file(std::path::Path::new(&path), &content)
-        .map_err(|error| format!("保存显示内容失败: {error}"))
-}
-
 fn lock_error<T>(error: std::sync::PoisonError<T>) -> String {
     format!("应用状态锁定失败: {error}")
 }
@@ -290,7 +284,6 @@ pub fn run() {
             save_extended,
             read_extended_file,
             write_extended_file,
-            write_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
