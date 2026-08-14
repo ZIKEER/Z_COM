@@ -1,7 +1,7 @@
 use std::{
     fs,
     io::{self, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
+    net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender, TryRecvError},
     thread::{self, JoinHandle},
@@ -289,13 +289,24 @@ fn run_tcp_server(
                 stream
                     .set_nonblocking(true)
                     .map_err(|error| error.to_string())?;
+                let replaced_address = client.as_ref().map(|(_, address)| *address);
+                if replaced_address.is_some() {
+                    frame.flush(app);
+                    if let Some((old_stream, _)) = client.as_ref() {
+                        let _ = old_stream.shutdown(Shutdown::Both);
+                    }
+                }
                 client = Some((stream, address));
                 emit(
                     app,
                     "peer",
                     "system",
                     Vec::new(),
-                    format!("客户端已连接: {address}"),
+                    if let Some(old_address) = replaced_address {
+                        format!("新客户端 {address} 已连接并顶替旧客户端 {old_address}")
+                    } else {
+                        format!("客户端已连接: {address}")
+                    },
                 );
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
