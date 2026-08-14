@@ -158,7 +158,7 @@ fn collect_devices(
         .into_iter()
         .map(|port| DeviceEntry {
             id: port.port_name.clone(),
-            label: port.port_name,
+            label: serial_device_label(&port),
             transport: "serial".into(),
             probe_kind: None,
             serial_number: None,
@@ -205,6 +205,36 @@ fn collect_devices(
     (devices, warnings)
 }
 
+fn serial_device_label(port: &serialport::SerialPortInfo) -> String {
+    let description = match &port.port_type {
+        serialport::SerialPortType::UsbPort(info) => info
+            .product
+            .as_deref()
+            .and_then(|value| clean_serial_description(value, &port.port_name))
+            .or_else(|| {
+                info.manufacturer
+                    .as_deref()
+                    .and_then(|value| clean_serial_description(value, &port.port_name))
+            })
+            .unwrap_or_else(|| format!("USB {:04X}:{:04X}", info.vid, info.pid)),
+        serialport::SerialPortType::BluetoothPort => "蓝牙串口".into(),
+        serialport::SerialPortType::PciPort => "PCI 串口".into(),
+        serialport::SerialPortType::Unknown => return port.port_name.clone(),
+    };
+    format!("{}  {description}", port.port_name)
+}
+
+fn clean_serial_description(value: &str, port_name: &str) -> Option<String> {
+    let value = value.trim();
+    let port_suffix = format!(" ({port_name})");
+    let value = value
+        .get(..value.len().saturating_sub(port_suffix.len()))
+        .filter(|_| value.to_ascii_lowercase().ends_with(&port_suffix.to_ascii_lowercase()))
+        .unwrap_or(value)
+        .trim_end();
+    (!value.is_empty() && !value.eq_ignore_ascii_case(port_name)).then(|| value.to_string())
+}
+
 fn is_jlink_probe(identifier: &str, kind: &str) -> bool {
     let description = format!("{identifier} {kind}").to_ascii_lowercase();
     description.contains("j-link")
@@ -219,7 +249,9 @@ fn is_generic_jtag_adapter(vendor_id: u16, identifier: &str, kind: &str) -> bool
 
 #[cfg(test)]
 mod tests {
-    use super::{is_generic_jtag_adapter, is_jlink_probe};
+    use serialport::{SerialPortInfo, SerialPortType, UsbPortInfo};
+
+    use super::{is_generic_jtag_adapter, is_jlink_probe, serial_device_label};
 
     #[test]
     fn separates_jlink_from_probe_rs_devices() {
@@ -235,6 +267,33 @@ mod tests {
             "FTDI"
         ));
         assert!(!is_generic_jtag_adapter(0x0483, "ST-Link", "STLink"));
+    }
+
+    #[test]
+    fn appends_usb_product_to_serial_port_label() {
+        let port = SerialPortInfo {
+            port_name: "COM3".into(),
+            port_type: SerialPortType::UsbPort(UsbPortInfo {
+                vid: 0x1a86,
+                pid: 0x7523,
+                serial_number: None,
+                manufacturer: Some("wch.cn".into()),
+                product: Some("USB-SERIAL CH340 (COM3)".into()),
+                interface: None,
+            }),
+        };
+
+        assert_eq!(serial_device_label(&port), "COM3  USB-SERIAL CH340");
+    }
+
+    #[test]
+    fn keeps_unknown_serial_port_label_compact() {
+        let port = SerialPortInfo {
+            port_name: "/dev/ttyS0".into(),
+            port_type: SerialPortType::Unknown,
+        };
+
+        assert_eq!(serial_device_label(&port), "/dev/ttyS0");
     }
 }
 
