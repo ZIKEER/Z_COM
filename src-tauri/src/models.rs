@@ -194,4 +194,5 @@ pub struct BootstrapData {
     pub data_directory: String,
     pub probe_target_directory: String,
     pub instance_id: u32,
+    pub update_notice: String,
 }

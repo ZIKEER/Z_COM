@@ -1,24 +1,25 @@
-# 运行时版本检查与升级方案
+# 运行时版本检查与升级
 
-> 远期计划，短期内不实施。当前优先完成基础通信功能与跨平台实机验收。
+Z_COM `0.1.4` 已实现手动检查、双源选择、下载进度、取消、SHA-256 校验、单文件替换和失败回滚。自动定时检查暂未启用。
 
-## 范围与原则
+## 固定更新源
 
-- 保持免安装绿色版，不引入 MSI、NSIS、AppImage 等安装器。
-- 正式目录只保留一个主程序：Windows 为 `Z_COM.exe`，Linux 为 `Z_COM`。
-- 更新必须由用户确认，不静默下载、不强制安装。
-- 检查失败不得影响串口、Socket 和 RTT 功能。
-- GitHub 和 Gitee 作为同一版本产物的两个镜像源。
-- 使用 SHA-256 校验下载完整性，不增加发布签名体系。
-- 只替换主程序，不覆盖 `config/`、`logs/`、`locks/`、`instance_N/` 和自定义 MCU 描述。
+程序硬编码以下公开 Release API，不从配置或用户输入读取下载源：
+
+```text
+GitHub: https://api.github.com/repos/ZIKEER/Z_COM/releases/latest
+Gitee:  https://gitee.com/api/v5/repos/zzk11111111/Z_COM/releases/latest
+```
+
+网络层使用 HTTPS、连接/总请求超时和系统代理，兼容常见的 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 及操作系统代理配置。检查失败不影响串口、Socket 和 RTT。
 
 ## Release 约定
 
-GitHub 与 Gitee 的相同版本必须上传内容一致的资产：
+GitHub 与 Gitee 的相同版本必须提供内容一致的三个文件：
 
 ```text
-Z_COM-v0.1.3-windows-x86_64.exe
-Z_COM-v0.1.3-linux-x86_64
+Z_COM-v版本号-windows-x86_64.exe
+Z_COM-v版本号-linux-x86_64
 release-manifest.json
 ```
 
@@ -26,15 +27,15 @@ release-manifest.json
 
 ```json
 {
-  "version": "0.1.3",
+  "version": "0.1.4",
   "assets": {
     "windows-x86_64": {
-      "name": "Z_COM-v0.1.3-windows-x86_64.exe",
+      "name": "Z_COM-v0.1.4-windows-x86_64.exe",
       "size": 12345678,
       "sha256": "..."
     },
     "linux-x86_64": {
-      "name": "Z_COM-v0.1.3-linux-x86_64",
+      "name": "Z_COM-v0.1.4-linux-x86_64",
       "size": 12345678,
       "sha256": "..."
     }
@@ -42,65 +43,71 @@ release-manifest.json
 }
 ```
 
-Release tag 统一使用 `v主版本.次版本.修订版本`。运行时版本以 `env!("CARGO_PKG_VERSION")` 为准，构建时要求 `Cargo.toml`、`tauri.conf.json` 和 `package.json` 三处一致。
+Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env!("CARGO_PKG_VERSION")` 为准，发布前必须确保 `package.json`、`package-lock.json`、`Cargo.toml` 和 `tauri.conf.json` 一致。
 
-## 检查与下载流程
+## 检查与选择
 
-1. About 页面提供“检查更新”入口；如启用自动检查，应在主界面初始化完成后执行。
-2. Rust 后端并发请求 GitHub 与 Gitee latest release API，分别设置连接和总请求超时。
-3. 网络层兼容 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 环境变量。
-4. 将响应统一转换为内部 `ReleaseInfo`，过滤草稿、预发布、非法版本和缺少当前平台资产的发布。
-5. 使用语义化版本比较远端版本与当前版本。两个源都可用时选择较高版本；单源可用时继续使用；全部失败时只提示检查失败。
-6. 用户确认后下载当前平台资产，后端向前端发送进度、完成、取消和错误事件。
-7. 下载失败时，只切换到版本、资产名和 SHA-256 全部一致的备用源。
-8. 下载写入程序目录 `.update/`，完成后校验 SHA-256；校验失败立即删除临时文件。
+1. About 页面点击“检查更新”后，Rust 后端并行查询 GitHub 与 Gitee。
+2. 忽略草稿、预发布、非法版本和缺少当前平台文件或清单的 Release。
+3. 分别下载并解析两个来源的 `release-manifest.json`。
+4. 使用语义化版本比较，选择高于当前版本的最高正式版本。
+5. 同版本双源文件名、大小或 SHA-256 不一致时拒绝更新。
+6. 同版本完全一致时优先使用 Gitee，GitHub 作为下载失败后的备用镜像。
+7. 只有一个来源可用时继续使用该来源；两个来源都失败时向用户汇总错误。
 
-建议模块边界：
+前端只接收版本、说明、来源、大小等展示信息。下载 URL、SHA-256 和可信候选保存在 Rust 状态中，前端不能传入或修改更新地址。
 
-```text
-src-tauri/src/update.rs            Release 查询、响应归一化、版本与资产选择
-src-tauri/src/update_download.rs   流式下载、进度、取消和 SHA-256 校验
-src-tauri/src/update_apply.rs      更新模式、文件替换、回滚和重启
-```
+## 下载与校验
 
-## 单文件替换方案
+- 更新文件写入主程序同级 `.update/`，因此绿色版目录必须可写。
+- 使用 64 KiB 数据块流式写入，并通过 Tauri event 显示百分比。
+- 用户可以取消下载；临时 `.part` 文件会删除。
+- 下载过程中限制数据不能超过清单大小。
+- 完成后校验准确大小和 SHA-256，再原子移动为暂存文件。
+- 主来源失败时，仅在备用来源具有相同版本、文件名、大小和 SHA-256 时回退。
+- 安装前再次读取文件并校验，防止下载后被修改。
 
-“独立 updater”是独立运行的更新进程，不是额外分发的程序。`Z_COM` 本身同时包含 GUI 模式和更新模式，并在初始化 Tauri 前解析更新参数：
+## 单文件替换与回滚
+
+程序不额外分发 updater。当前 `Z_COM` 自身包含 GUI 模式和更新模式：
 
 ```text
 正常启动：Z_COM.exe
 更新模式：临时目录/Z_COM-updater.exe --apply-update <参数>
 ```
 
-更新步骤：
+安装过程：
 
-1. 校验新版后，将当前主程序复制到操作系统临时目录。
-2. 启动临时副本，传入当前程序路径、新文件路径和重启参数。
-3. 主程序停止通信任务、刷新日志、释放文件锁并退出。
-4. 临时副本等待所有实例退出，将当前程序改名为 `.bak`，再把新版移动到原路径。
-5. Windows 保持 `.exe` 后缀；Linux 使用无后缀文件名并确保可执行权限。
-6. 临时副本启动新版。替换或启动失败时恢复 `.bak`。
-7. 新版启动后清理 `.bak` 和 `.update/`。Windows 遗留的临时 updater 在下次启动清理。
+1. 用户点击“安装并重启”并二次确认。
+2. 后端拒绝开发模式，并检查是否存在其他 Z_COM 实例。
+3. 程序断开通信、写入日志，将当前主程序复制到系统临时目录。
+4. 临时副本以更新模式启动，主程序退出并释放文件锁。
+5. updater 再次校验暂存文件，把当前程序改名为 `.bak`，再移动新程序到原路径。
+6. Linux 新程序设置为 `0755`；Windows 保持原目标路径和 `.exe` 后缀。
+7. 新程序启动失败或替换失败时恢复 `.bak`。
+8. 新程序成功启动后清理 `.bak`、`.update/` 和临时 updater。
 
-多实例场景下，更新前必须要求其他实例退出。后续可让正常实例持有共享更新锁，由 updater 获取独占锁后再替换程序。
+更新进程的错误写入 `.update/update-error.log`。下次启动时 About 和主界面显示错误，旧版本仍可继续使用。
 
-## 建议依赖
+## 模块边界
 
-- HTTP 与流式下载：`reqwest`
-- 版本比较：`semver`
-- 完整性校验：`sha2`
-- 进度与取消：异步流配合 Tauri event
+```text
+src-tauri/src/update.rs            Release 查询、清单解析、版本与镜像选择
+src-tauri/src/update_download.rs   下载、进度、取消、大小与 SHA-256 校验
+src-tauri/src/update_apply.rs      更新模式、备份、替换、回滚、重启和清理
+```
 
-网络和文件操作不得阻塞 WebView/UI 线程。
+## 已验证
 
-## 验收范围
+- GitHub、Gitee 当前公开 `latest release` API 和 `release-manifest.json` 在线解析。
+- 两个来源的版本、文件名、大小和 SHA-256 一致性判断。
+- 16 项常规 Rust 测试和 1 项默认忽略的双源在线测试。
+- Windows 隔离目录中的 updater 备份、替换、新程序启动和清理流程。
+- Svelte 静态检查和生产构建。
 
-Windows、Linux 分别验证：
+## 待验收
 
-- 单源不可用和双源不可用。
-- 下载中断与取消。
-- SHA-256 不一致。
-- 目标目录不可写。
-- 存在其他运行实例。
-- 替换失败和启动失败回滚。
-- 成功升级后配置、日志和自定义目标保持不变。
+- 发布高于 `0.1.4` 的测试 Release，完成真实跨版本下载和替换。
+- Windows/Linux 分别验证单源不可用、双源不可用、取消、断网、只读目录、其他实例和文件被占用。
+- Linux 验证执行权限、Wayland/X11 重启和真实绿色版目录。
+- Windows 验证 Defender/杀毒软件、不同目录权限和快捷方式启动场景。

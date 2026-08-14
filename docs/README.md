@@ -16,7 +16,7 @@
 | [开发、检查与打包](development.md) | 环境、命令、目录结构、绿色版产物和维护规则 |
 | [跨平台设计与验收](cross-platform.md) | Windows / Linux 实现原则、产物和最低验收矩阵 |
 | [功能状态与路线图](roadmap.md) | 当前状态、待实机验收和暂不支持项 |
-| [运行时更新方案](update-plan.md) | 远期 GitHub / Gitee 检查更新与单文件替换设计 |
+| [运行时更新](update-plan.md) | GitHub / Gitee 双源检查、下载校验、替换、回滚和验收范围 |
 
 ## 维护约定
 

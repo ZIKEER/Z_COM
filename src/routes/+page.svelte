@@ -99,6 +99,26 @@
     dataDirectory: string;
     probeTargetDirectory: string;
     instanceId: number;
+    updateNotice: string;
+  }
+
+  interface UpdateInfo {
+    available: boolean;
+    currentVersion: string;
+    version: string;
+    title: string;
+    notes: string;
+    source: string;
+    assetName: string;
+    assetSize: number;
+    mirrorAvailable: boolean;
+  }
+
+  interface UpdateProgress {
+    downloaded: number;
+    total: number;
+    percent: number;
+    source: string;
   }
 
   interface ReceiveLine {
@@ -184,6 +204,14 @@
   let jlinkSdkStatus = $state("尚未检查");
   let connectionWatchdog: number | undefined;
   let connectionTimedOut = false;
+  let updateInfo = $state<UpdateInfo | null>(null);
+  let updateChecking = $state(false);
+  let updateDownloading = $state(false);
+  let updateDownloaded = $state(false);
+  let updateInstalling = $state(false);
+  let updateProgress = $state<UpdateProgress | null>(null);
+  let updateStatus = $state("可手动检查 GitHub / Gitee 新版本");
+  let updateError = $state("");
 
   const CONNECTION_TIMEOUT_MS = 12_000;
 
@@ -200,10 +228,15 @@
   ].sort((left, right) => Number(left) - Number(right)));
 
   onMount(() => {
-    let unlisten: UnlistenFn | undefined;
+    let unlistenTransport: UnlistenFn | undefined;
+    let unlistenUpdate: UnlistenFn | undefined;
     void (async () => {
       try {
-        unlisten = await listen<TransportEvent>("transport-event", ({ payload }) => handleTransportEvent(payload));
+        unlistenTransport = await listen<TransportEvent>("transport-event", ({ payload }) => handleTransportEvent(payload));
+        unlistenUpdate = await listen<UpdateProgress>("update-progress", ({ payload }) => {
+          updateProgress = payload;
+          updateStatus = `${payload.source} 下载中 ${payload.percent}%`;
+        });
         const data = await invoke<BootstrapData>("bootstrap");
         config = data.config;
         config.send_panel_ratio = clamp(config.send_panel_ratio, 0.12, 0.5);
@@ -221,6 +254,11 @@
         dataDirectory = data.dataDirectory;
         probeTargetDirectory = data.probeTargetDirectory;
         instanceId = data.instanceId;
+        if (data.updateNotice) {
+          updateError = data.updateNotice;
+          updateStatus = "上次更新失败，当前仍使用原版本";
+          errorText = `软件更新失败: ${data.updateNotice}`;
+        }
         sidebarOpen = data.config.preset_panel_visible;
         mode = data.config.transport_mode;
         socketProtocol = data.config.socket_protocol;
@@ -236,7 +274,8 @@
     })();
     return () => {
       clearConnectionWatchdog();
-      unlisten?.();
+      unlistenTransport?.();
+      unlistenUpdate?.();
     };
   });
 
@@ -801,6 +840,81 @@
     }
   }
 
+  async function checkForUpdates() {
+    if (updateChecking || updateDownloading || updateInstalling) return;
+    updateChecking = true;
+    updateInfo = null;
+    updateDownloaded = false;
+    updateProgress = null;
+    updateError = "";
+    updateStatus = "正在同时检查 GitHub 和 Gitee...";
+    try {
+      updateInfo = await invoke<UpdateInfo>("check_for_updates");
+      updateStatus = updateInfo.available
+        ? `发现 Z_COM v${updateInfo.version}`
+        : "当前已是最新版本";
+    } catch (error) {
+      updateError = stringifyError(error);
+      updateStatus = "检查更新失败";
+    } finally {
+      updateChecking = false;
+    }
+  }
+
+  async function downloadAvailableUpdate() {
+    if (!updateInfo?.available || updateDownloading || updateInstalling) return;
+    updateDownloading = true;
+    updateDownloaded = false;
+    updateProgress = null;
+    updateError = "";
+    updateStatus = `准备下载 Z_COM v${updateInfo.version}...`;
+    try {
+      await invoke("download_update");
+      updateDownloaded = true;
+      updateStatus = "下载与 SHA-256 校验完成";
+    } catch (error) {
+      updateError = stringifyError(error);
+      updateStatus = updateError.includes("取消") ? "下载已取消" : "更新下载失败";
+    } finally {
+      updateDownloading = false;
+    }
+  }
+
+  async function cancelUpdateDownload() {
+    if (!updateDownloading) return;
+    updateStatus = "正在取消下载...";
+    try {
+      await invoke("cancel_update_download");
+    } catch (error) {
+      updateError = stringifyError(error);
+    }
+  }
+
+  async function installAvailableUpdate() {
+    if (!updateInfo?.available || !updateDownloaded || updateInstalling) return;
+    if (instanceId > 1) {
+      updateError = "请使用实例 1 安装更新，并关闭其他 Z_COM 实例";
+      return;
+    }
+    if (!window.confirm(`安装 Z_COM v${updateInfo.version}？\n\n程序将断开当前连接并自动重启。`)) return;
+    updateInstalling = true;
+    updateError = "";
+    updateStatus = "正在启动更新进程，程序即将重启...";
+    try {
+      await invoke("install_update");
+    } catch (error) {
+      updateError = stringifyError(error);
+      updateStatus = "启动更新失败";
+      updateInstalling = false;
+    }
+  }
+
+  function formatFileSize(bytes: number) {
+    return bytes >= 1024 * 1024
+      ? `${(bytes / 1024 / 1024).toFixed(2)} MiB`
+      : `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+
   async function updateDisplayMode(value: DisplayMode) {
     config.display_mode = value;
     await savePreferences();
@@ -1252,8 +1366,40 @@
             <dt>数据保护</dt><dd>通信报文按日期自动写入日志，无需手动保存</dd>
           </dl>
         </section>
+        <section class:available={updateInfo?.available} class="about-update">
+          <div class="about-update-heading">
+            <div><strong>软件更新</strong><span>{updateStatus}</span></div>
+            {#if updateChecking}<span class="spinning"><RefreshCw size={17} /></span>{/if}
+          </div>
+          {#if updateInfo?.available}
+            <div class="update-summary">
+              <strong>{updateInfo.title || `Z_COM v${updateInfo.version}`}</strong>
+              <span>{updateInfo.source}{updateInfo.mirrorAvailable ? " + 备用镜像" : ""} · {formatFileSize(updateInfo.assetSize)}</span>
+            </div>
+            {#if updateInfo.notes}<pre>{updateInfo.notes}</pre>{/if}
+          {:else if updateInfo}
+            <p>当前版本 v{updateInfo.currentVersion}，暂时没有可用的新版本。</p>
+          {/if}
+          {#if updateDownloading && updateProgress}
+            <div class="update-progress" aria-label={`更新下载进度 ${updateProgress.percent}%`}>
+              <i style={`width:${updateProgress.percent}%`}></i>
+            </div>
+          {/if}
+          {#if updateError}<p class="update-error">{updateError}</p>{/if}
+        </section>
       </div>
-      <footer><span>更新检查功能规划中</span><button class="primary" onclick={() => aboutOpen = false}>完成</button></footer>
+      <footer>
+        <span>更新由用户确认，不会静默安装</span>
+        <button onclick={checkForUpdates} disabled={updateChecking || updateDownloading || updateInstalling}>{updateChecking ? "检查中..." : "检查更新"}</button>
+        {#if updateDownloading}
+          <button onclick={cancelUpdateDownload}>取消下载</button>
+        {:else if updateInfo?.available && !updateDownloaded}
+          <button class="primary" onclick={downloadAvailableUpdate} disabled={updateInstalling}>下载更新</button>
+        {:else if updateDownloaded}
+          <button class="primary" onclick={installAvailableUpdate} disabled={updateInstalling}>{updateInstalling ? "正在重启..." : "安装并重启"}</button>
+        {/if}
+        <button onclick={() => aboutOpen = false} disabled={updateInstalling}>关闭</button>
+      </footer>
     </div>
   </div>
 {/if}
@@ -1409,7 +1555,7 @@
   .about-dialog > header { height: 44px; display: flex; align-items: center; padding: 0 9px 0 18px; background: #fff; border-bottom: 1px solid #dce4df; }
   .about-dialog > header h2 { margin: 0; font-size: 15px; }
   .about-dialog > header button { margin-left: auto; }
-  .about-body { display: grid; gap: 14px; padding: 18px; }
+  .about-body { display: grid; gap: 14px; max-height: min(690px, calc(100vh - 150px)); overflow-y: auto; padding: 18px; }
   .about-hero { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: center; }
   .about-logo { width: 72px; height: 72px; border-radius: 16px; box-shadow: 0 7px 20px rgba(24, 121, 78, .2); }
   .about-name { display: flex; align-items: center; gap: 9px; }
@@ -1428,6 +1574,20 @@
   .about-runtime dt { color: #68776f; }
   .about-runtime dd { margin: 0; color: #35443d; overflow-wrap: anywhere; }
   .about-runtime code { color: #176b48; font: 12px "Cascadia Mono", Consolas, monospace; }
+  .about-update { display: grid; gap: 9px; padding: 12px 14px; background: #f5f7f6; border: 1px solid #d7dfda; border-radius: 7px; }
+  .about-update.available { background: #f0f8f4; border-color: #add8c2; }
+  .about-update-heading { display: flex; align-items: center; justify-content: space-between; color: #294b3c; }
+  .about-update-heading > div { display: grid; gap: 2px; }
+  .about-update-heading strong { font-size: 13px; }
+  .about-update-heading span { color: #718078; font-size: 11px; }
+  .update-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .update-summary strong { color: #176b48; font-size: 13px; }
+  .update-summary span { color: #68776f; font-size: 11px; white-space: nowrap; }
+  .about-update pre { max-height: 170px; margin: 0; overflow: auto; padding: 9px 10px; color: #3f4b45; background: #fff; border: 1px solid #dce4df; border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 "Cascadia Mono", Consolas, monospace; }
+  .about-update p { margin: 0; color: #68776f; font-size: 12px; }
+  .about-update .update-error { color: #a12626; }
+  .update-progress { height: 6px; overflow: hidden; background: #dce7e1; border-radius: 999px; }
+  .update-progress i { display: block; height: 100%; background: #16865a; border-radius: inherit; transition: width .16s ease; }
   .about-dialog > footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 9px 14px; background: #fff; border-top: 1px solid #dce4df; }
   .about-dialog > footer span { margin-right: auto; color: #829087; font-size: 11px; }
   .about-dialog > footer button { min-width: 82px; padding: 0 14px; }

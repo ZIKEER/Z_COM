@@ -23,7 +23,9 @@
 - Windows 开发、检查、测试和绿色版打包已通过。
 - Ubuntu 24.04 WSL2 原生依赖安装、前端检查、前端构建、11 项 Rust 测试和 release 打包已通过。
 - WSLg 软件渲染模式下完成启动存活测试，产物依赖无缺失。
+- Windows 已完成隔离目录中的 updater 备份、替换、启动和清理集成测试。
 - WSL 不能代替真实 Linux 桌面、串口、USB 探针和 SEGGER SDK 硬件验收。
+- Windows/Linux 仍需使用后续真实 Release 完成跨版本下载和自替换验收。
 
 ## 最低验收矩阵
 

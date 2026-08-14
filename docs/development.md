@@ -59,7 +59,7 @@ Windows 输出：
 
 ```text
 dist/
-└── Z_COM_V0.1.3/
+└── Z_COM_V版本号/
     ├── Z_COM.exe
     ├── config/
     ├── logs/
@@ -71,7 +71,7 @@ Linux 输出：
 ```text
 dist/
 └── linux-x86_64/
-    └── Z_COM_V0.1.3/
+    └── Z_COM_V版本号/
         ├── Z_COM
         ├── config/
         ├── logs/
@@ -91,9 +91,9 @@ npm run release:stage
 脚本校验 `package.json`、`Cargo.toml` 和 `tauri.conf.json` 版本一致，并将两个平台的主程序复制到同一个目录：
 
 ```text
-dist/release/v0.1.3/
-├── Z_COM-v0.1.3-windows-x86_64.exe
-├── Z_COM-v0.1.3-linux-x86_64
+dist/release/v版本号/
+├── Z_COM-v版本号-windows-x86_64.exe
+├── Z_COM-v版本号-linux-x86_64
 └── release-manifest.json
 ```
 

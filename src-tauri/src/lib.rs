@@ -3,6 +3,9 @@ mod models;
 mod segger;
 mod storage;
 mod transport;
+mod update;
+mod update_apply;
+mod update_download;
 
 use std::{
     collections::hash_map::DefaultHasher,
@@ -10,6 +13,7 @@ use std::{
     hash::{Hash, Hasher},
     path::PathBuf,
     sync::Mutex,
+    sync::atomic::Ordering,
 };
 
 use fs2::FileExt;
@@ -21,15 +25,19 @@ use probe_rs::probe::list::Lister;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use transport::TransportManager;
+use update::{UpdateInfo, UpdateState};
+use update_download::DownloadedUpdate;
 
 pub(crate) struct AppState {
     pub(crate) config_directory: PathBuf,
     instance_id: u32,
+    instance_lock_path: PathBuf,
     _instance_lock: File,
     config: Mutex<AppConfig>,
     extended: Mutex<ExtendedSendConfig>,
     transport: Mutex<TransportManager>,
     pub(crate) logger: Mutex<Logger>,
+    update: Mutex<UpdateState>,
 }
 
 #[tauri::command]
@@ -47,6 +55,7 @@ fn bootstrap(state: State<'_, AppState>) -> Result<BootstrapData, String> {
         data_directory: relative_data_directory.clone(),
         probe_target_directory: format!("{relative_data_directory}/probe_rs_targets"),
         instance_id: state.instance_id,
+        update_notice: update_apply::take_startup_error(),
     })
 }
 
@@ -142,6 +151,95 @@ async fn check_jlink_sdk(configured_path: String) -> Result<String, String> {
         .map_err(|error| format!("J-Link SDK 检查后台任务失败: {error}"))?
 }
 
+#[tauri::command]
+async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateInfo, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| update::check(env!("CARGO_PKG_VERSION")))
+        .await
+        .map_err(|error| format!("更新检查后台任务失败: {error}"))??;
+    let (info, candidate) = result;
+    let mut update = state.update.lock().map_err(lock_error)?;
+    update.candidate = candidate;
+    update.downloaded_path = None;
+    Ok(info)
+}
+
+#[tauri::command]
+async fn download_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<DownloadedUpdate, String> {
+    let candidate = state
+        .update
+        .lock()
+        .map_err(lock_error)?
+        .candidate
+        .clone()
+        .ok_or_else(|| "请先检查更新".to_string())?;
+    let cancel = {
+        let update = state.update.lock().map_err(lock_error)?;
+        update.cancel_download.store(false, Ordering::Relaxed);
+        update.cancel_download.clone()
+    };
+    let download_app = app.clone();
+    let candidate_for_download = candidate.clone();
+    let (downloaded, path) = tauri::async_runtime::spawn_blocking(move || {
+        update_download::download(&download_app, &candidate_for_download, &cancel)
+    })
+    .await
+    .map_err(|error| format!("更新下载后台任务失败: {error}"))??;
+    let mut update = state.update.lock().map_err(lock_error)?;
+    if update
+        .candidate
+        .as_ref()
+        .is_some_and(|current| current.version == candidate.version)
+    {
+        update.downloaded_path = Some(path);
+    }
+    Ok(downloaded)
+}
+
+#[tauri::command]
+fn cancel_update_download(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .update
+        .lock()
+        .map_err(lock_error)?
+        .cancel_download
+        .store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+fn install_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        return Err("开发模式不允许替换程序，请使用绿色版验证自动更新".into());
+    }
+    ensure_no_other_instances(&state)?;
+    let (candidate, downloaded_path) = {
+        let update = state.update.lock().map_err(lock_error)?;
+        (
+            update
+                .candidate
+                .clone()
+                .ok_or_else(|| "请先检查更新".to_string())?,
+            update
+                .downloaded_path
+                .clone()
+                .ok_or_else(|| "请先下载并校验更新".to_string())?,
+        )
+    };
+    state.transport.lock().map_err(lock_error)?.disconnect();
+    if let Ok(mut logger) = state.logger.lock() {
+        logger.log_event(&format!(
+            "开始安装 Z_COM v{}，应用即将重启",
+            candidate.version
+        ));
+    }
+    update_apply::launch(&candidate, &downloaded_path)?;
+    app.exit(0);
+    Ok(())
+}
+
 fn collect_devices(
     include_probes: bool,
     show_generic_jtag_adapters: bool,
@@ -229,7 +327,11 @@ fn clean_serial_description(value: &str, port_name: &str) -> Option<String> {
     let port_suffix = format!(" ({port_name})");
     let value = value
         .get(..value.len().saturating_sub(port_suffix.len()))
-        .filter(|_| value.to_ascii_lowercase().ends_with(&port_suffix.to_ascii_lowercase()))
+        .filter(|_| {
+            value
+                .to_ascii_lowercase()
+                .ends_with(&port_suffix.to_ascii_lowercase())
+        })
         .unwrap_or(value)
         .trim_end();
     (!value.is_empty() && !value.eq_ignore_ascii_case(port_name)).then(|| value.to_string())
@@ -365,6 +467,7 @@ fn lock_error<T>(error: std::sync::PoisonError<T>) -> String {
 struct InstanceAllocation {
     id: u32,
     data_root: PathBuf,
+    lock_path: PathBuf,
     lock: File,
 }
 
@@ -393,7 +496,7 @@ fn allocate_instance() -> Result<InstanceAllocation, String> {
             .create(true)
             .read(true)
             .write(true)
-            .open(lock_path)
+            .open(&lock_path)
             .map_err(|error| format!("无法打开实例锁文件: {error}"))?;
         if FileExt::try_lock_exclusive(&lock).is_ok() {
             let data_root = if id == 1 {
@@ -406,6 +509,7 @@ fn allocate_instance() -> Result<InstanceAllocation, String> {
             return Ok(InstanceAllocation {
                 id,
                 data_root,
+                lock_path,
                 lock,
             });
         }
@@ -413,8 +517,54 @@ fn allocate_instance() -> Result<InstanceAllocation, String> {
     Err("已达到最大并行实例数 128".into())
 }
 
+fn ensure_no_other_instances(state: &AppState) -> Result<(), String> {
+    let lock_directory = state
+        .instance_lock_path
+        .parent()
+        .ok_or_else(|| "无法确定实例锁目录".to_string())?;
+    let current_name = state
+        .instance_lock_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "实例锁文件名无效".to_string())?;
+    let prefix = current_name
+        .split_once("_instance_")
+        .map(|(value, _)| value)
+        .ok_or_else(|| "实例锁文件名格式无效".to_string())?;
+    for entry in
+        fs::read_dir(lock_directory).map_err(|error| format!("无法检查其他实例: {error}"))?
+    {
+        let path = entry
+            .map_err(|error| format!("无法读取实例锁目录: {error}"))?
+            .path();
+        if path == state.instance_lock_path {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !name.starts_with(prefix) || !name.contains("_instance_") {
+            continue;
+        }
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| format!("无法检查实例锁 {}: {error}", path.display()))?;
+        if FileExt::try_lock_exclusive(&lock).is_err() {
+            return Err("检测到其他 Z_COM 实例，请关闭其他实例后再安装更新".into());
+        }
+    }
+    Ok(())
+}
+
+pub fn run_update_mode() -> Option<Result<(), String>> {
+    update_apply::run_update_mode()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    update_apply::schedule_cleanup();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -436,9 +586,11 @@ pub fn run() {
                 extended: Mutex::new(extended),
                 config_directory,
                 instance_id: instance.id,
+                instance_lock_path: instance.lock_path,
                 _instance_lock: instance.lock,
                 transport: Mutex::new(TransportManager::default()),
                 logger: Mutex::new(logger),
+                update: Mutex::new(UpdateState::default()),
             });
             Ok(())
         })
@@ -449,6 +601,10 @@ pub fn run() {
             list_local_ipv4_addresses,
             list_devices,
             check_jlink_sdk,
+            check_for_updates,
+            download_update,
+            cancel_update_download,
+            install_update,
             connect_transport,
             disconnect_transport,
             send_bytes,

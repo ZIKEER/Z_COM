@@ -12,6 +12,7 @@ Z_COM 是基于 Rust、Tauri 2 和 Svelte 5 的跨平台通信工具，支持串
 - 按日期自动记录通信日志
 - 配置、日志和多实例数据均保存在程序目录
 - Windows / Linux 绿色版运行
+- GitHub / Gitee 双源检查、下载校验和单文件升级
 
 ## 快速开始
 
@@ -46,4 +47,4 @@ npm run pack
 - [自定义 probe-rs MCU](docs/custom-probe-rs-targets.md)
 - [功能状态与开发路线图](docs/roadmap.md)
 
-当前版本：`0.1.3`。正式功能状态、验收范围和暂不支持项以[路线图](docs/roadmap.md)为准。
+当前版本：`0.1.4`。正式功能状态、验收范围和暂不支持项以[路线图](docs/roadmap.md)为准。
