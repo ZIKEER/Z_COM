@@ -54,6 +54,27 @@ fn list_custom_probe_targets(state: State<'_, AppState>) -> Result<Vec<String>, 
 }
 
 #[tauri::command]
+fn list_local_ipv4_addresses() -> Vec<String> {
+    let mut addresses = vec!["0.0.0.0".to_string(), "127.0.0.1".to_string()];
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        addresses.extend(interfaces.into_iter().filter_map(|interface| match interface.addr {
+            if_addrs::IfAddr::V4(address) => Some(address.ip.to_string()),
+            if_addrs::IfAddr::V6(_) => None,
+        }));
+    }
+    addresses.sort_by_key(|address| {
+        let priority = match address.as_str() {
+            "0.0.0.0" => 0,
+            "127.0.0.1" => 1,
+            _ => 2,
+        };
+        (priority, address.clone())
+    });
+    addresses.dedup();
+    addresses
+}
+
+#[tauri::command]
 fn list_devices(state: State<'_, AppState>) -> Vec<DeviceEntry> {
     let (include_probes, show_generic_jtag_adapters) = state
         .config
@@ -291,6 +312,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bootstrap,
             list_custom_probe_targets,
+            list_local_ipv4_addresses,
             list_devices,
             connect_transport,
             disconnect_transport,

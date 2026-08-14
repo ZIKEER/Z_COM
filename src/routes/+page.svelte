@@ -173,6 +173,7 @@
   let dataDirectory = $state("");
   let probeTargetDirectory = $state("");
   let customProbeTargets = $state<string[]>([]);
+  let localIpv4Addresses = $state<string[]>(["0.0.0.0", "127.0.0.1"]);
   let instanceId = $state(1);
   let lastValidBaudrate = $state("115200");
   let resizing = $state(false);
@@ -217,6 +218,7 @@
         socketRole = data.config.socket_role;
         selectedProbe = data.config.selected_probe;
         await refreshCustomProbeTargets();
+        await refreshLocalIpv4Addresses();
         await refreshDevices();
       } catch (error) {
         statusText = "浏览器预览模式";
@@ -683,6 +685,14 @@
     }
   }
 
+  async function refreshLocalIpv4Addresses() {
+    try {
+      localIpv4Addresses = await invoke<string[]>("list_local_ipv4_addresses");
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   async function openProbeTargetDirectory() {
     try {
       await openPath(probeTargetDirectory);
@@ -969,7 +979,8 @@
       {:else if mode === "socket"}
         <div class="mini-switch"><button class:active={socketProtocol === "TCP"} onclick={() => setSocketProtocol("TCP")}>TCP</button><button class:active={socketProtocol === "UDP"} onclick={() => setSocketProtocol("UDP")}>UDP</button></div>
         <div class="mini-switch"><button class:active={socketRole === "Client"} onclick={() => setSocketRole("Client")}>客户端</button><button class:active={socketRole === "Server"} onclick={() => setSocketRole("Server")}>服务端</button></div>
-        <label class="host"><span>地址</span><input bind:value={config.socket_host} onblur={savePreferences} disabled={connected} /></label>
+        <label class="host"><span>地址</span><input list={socketRole === "Server" ? "local-ipv4-addresses" : undefined} bind:value={config.socket_host} onblur={savePreferences} disabled={connected} /></label>
+        <datalist id="local-ipv4-addresses">{#each localIpv4Addresses as address}<option value={address}></option>{/each}</datalist>
         <label class="port"><span>端口</span><input type="number" min="1" max="65535" bind:value={config.socket_port} onblur={savePreferences} disabled={connected} /></label>
       {:else}
         <label class="probe-select"><span>调试探针</span><select bind:value={selectedProbe} onchange={persistSelectedProbe} disabled={connected}>{#each probeDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
