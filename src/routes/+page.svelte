@@ -112,6 +112,16 @@
     assetName: string;
     assetSize: number;
     mirrorAvailable: boolean;
+    sourceWarning: string;
+    latestConfirmed: boolean;
+    sourceResults: UpdateSourceResult[];
+  }
+
+  interface UpdateSourceResult {
+    source: string;
+    version: string;
+    state: "newer" | "current" | "older" | "failed";
+    error: string;
   }
 
   interface UpdateProgress {
@@ -852,7 +862,9 @@
       updateInfo = await invoke<UpdateInfo>("check_for_updates");
       updateStatus = updateInfo.available
         ? `发现 Z_COM v${updateInfo.version}`
-        : "当前已是最新版本";
+        : updateInfo.latestConfirmed
+          ? "当前已是最新版本"
+          : "无法确认最新版本";
     } catch (error) {
       updateError = stringifyError(error);
       updateStatus = "检查更新失败";
@@ -1376,9 +1388,29 @@
               <strong>{updateInfo.title || `Z_COM v${updateInfo.version}`}</strong>
               <span>{updateInfo.source}{updateInfo.mirrorAvailable ? " + 备用镜像" : ""} · {formatFileSize(updateInfo.assetSize)}</span>
             </div>
+            {#if updateInfo.sourceWarning}<p class="update-warning">{updateInfo.sourceWarning}</p>{/if}
             {#if updateInfo.notes}<pre>{updateInfo.notes}</pre>{/if}
           {:else if updateInfo}
-            <p>当前版本 v{updateInfo.currentVersion}，暂时没有可用的新版本。</p>
+            <p>当前版本 v{updateInfo.currentVersion}，{updateInfo.latestConfirmed ? "暂时没有可用的新版本。" : "部分更新源未能完成检测。"}</p>
+          {/if}
+          {#if updateInfo?.sourceResults?.length}
+            <div class="update-sources">
+              {#each updateInfo.sourceResults as result}
+                <div class:failed={result.state === "failed"}>
+                  <strong>{result.source}</strong>
+                  {#if result.state === "failed"}
+                    <span>检测失败</span>
+                    <small title={result.error}>{result.error}</small>
+                  {:else}
+                    <span>v{result.version}</span>
+                    <small>{result.state === "newer" ? "高于当前版本" : result.state === "older" ? "低于当前版本" : "与当前版本相同"}</small>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if updateInfo?.sourceWarning && !updateInfo.available}
+            <p class="update-warning">{updateInfo.sourceWarning}</p>
           {/if}
           {#if updateDownloading && updateProgress}
             <div class="update-progress" aria-label={`更新下载进度 ${updateProgress.percent}%`}>
@@ -1586,6 +1618,14 @@
   .about-update pre { max-height: 170px; margin: 0; overflow: auto; padding: 9px 10px; color: #3f4b45; background: #fff; border: 1px solid #dce4df; border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 "Cascadia Mono", Consolas, monospace; }
   .about-update p { margin: 0; color: #68776f; font-size: 12px; }
   .about-update .update-error { color: #a12626; }
+  .about-update .update-warning { color: #9a6500; }
+  .update-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .update-sources > div { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 8px 10px; background: #fff; border: 1px solid #dce4df; border-radius: 5px; }
+  .update-sources strong { color: #294b3c; font-size: 12px; }
+  .update-sources span { justify-self: end; color: #176b48; font-size: 12px; }
+  .update-sources small { grid-column: 1 / -1; color: #718078; font-size: 11px; overflow-wrap: anywhere; }
+  .update-sources > div.failed { border-color: #e3c7c7; background: #fff8f8; }
+  .update-sources > div.failed span, .update-sources > div.failed small { color: #a12626; }
   .update-progress { height: 6px; overflow: hidden; background: #dce7e1; border-radius: 999px; }
   .update-progress i { display: block; height: 100%; background: #16865a; border-radius: inherit; transition: width .16s ease; }
   .about-dialog > footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 9px 14px; background: #fff; border-top: 1px solid #dce4df; }

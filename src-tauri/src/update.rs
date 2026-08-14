@@ -44,6 +44,18 @@ pub(crate) struct UpdateInfo {
     pub(crate) asset_name: String,
     pub(crate) asset_size: u64,
     pub(crate) mirror_available: bool,
+    pub(crate) source_warning: String,
+    pub(crate) latest_confirmed: bool,
+    pub(crate) source_results: Vec<UpdateSourceResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateSourceResult {
+    pub(crate) source: String,
+    pub(crate) version: String,
+    pub(crate) state: String,
+    pub(crate) error: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,10 +113,14 @@ pub(crate) fn check(current_version: &str) -> Result<(UpdateInfo, Option<Resolve
     let gitee = thread::spawn(move || fetch_source(&gitee_client, "Gitee", GITEE_RELEASE_API));
     let github = github
         .join()
-        .map_err(|_| "GitHub 更新检查线程异常退出".to_string())?;
+        .unwrap_or_else(|_| Err("GitHub 更新检查线程异常退出".to_string()));
     let gitee = gitee
         .join()
-        .map_err(|_| "Gitee 更新检查线程异常退出".to_string())?;
+        .unwrap_or_else(|_| Err("Gitee 更新检查线程异常退出".to_string()));
+    let source_results = vec![
+        source_result("GitHub", &github, &current),
+        source_result("Gitee", &gitee, &current),
+    ];
 
     let mut failures = Vec::new();
     let mut candidates = Vec::new();
@@ -116,14 +132,51 @@ pub(crate) fn check(current_version: &str) -> Result<(UpdateInfo, Option<Resolve
         Ok(candidate) => candidates.push(candidate),
         Err(error) => failures.push(error),
     }
+    resolve_candidates(
+        current_version,
+        &current,
+        candidates,
+        failures,
+        source_results,
+    )
+}
+
+fn resolve_candidates(
+    current_version: &str,
+    current: &Version,
+    mut candidates: Vec<SourceUpdate>,
+    failures: Vec<String>,
+    source_results: Vec<UpdateSourceResult>,
+) -> Result<(UpdateInfo, Option<ResolvedUpdate>), String> {
     if candidates.is_empty() {
-        return Err(format!("两个更新源均不可用：{}", failures.join("；")));
+        return Ok((
+            unavailable_info(
+                current_version,
+                format!("两个更新源均不可用：{}", failures.join("；")),
+                source_results,
+            ),
+            None,
+        ));
     }
 
     candidates.sort_by(|left, right| right.version.cmp(&left.version));
     let latest_version = candidates[0].version.clone();
-    if latest_version <= current {
-        return Ok((no_update_info(current_version), None));
+    if latest_version <= *current {
+        if failures.is_empty() {
+            return Ok((no_update_info(current_version, source_results), None));
+        }
+        return Ok((
+            unavailable_info(
+                current_version,
+                format!(
+                    "无法确认是否为最新版本：{}；可用更新源最高版本为 {}",
+                    failures.join("；"),
+                    latest_version
+                ),
+                source_results,
+            ),
+            None,
+        ));
     }
 
     let mut latest = candidates
@@ -163,6 +216,13 @@ pub(crate) fn check(current_version: &str) -> Result<(UpdateInfo, Option<Resolve
         asset_name: resolved.asset_name.clone(),
         asset_size: resolved.asset_size,
         mirror_available: resolved.fallback_url.is_some(),
+        source_warning: if failures.is_empty() {
+            String::new()
+        } else {
+            format!("部分更新源不可用：{}", failures.join("；"))
+        },
+        latest_confirmed: failures.is_empty(),
+        source_results,
     };
     Ok((info, Some(resolved)))
 }
@@ -190,7 +250,7 @@ fn fetch_source(client: &Client, source: &str, api_url: &str) -> Result<SourceUp
     let version = Version::parse(release.tag_name.trim_start_matches(['v', 'V']))
         .map_err(|error| format!("{source} Release tag {} 无效: {error}", release.tag_name))?;
     let platform = platform_key()?;
-    let expected_name = asset_name(&version)?;
+    let expected_name = asset_name()?;
     let asset = release
         .assets
         .iter()
@@ -266,6 +326,32 @@ fn same_asset(left: &SourceUpdate, right: &SourceUpdate) -> bool {
         && left.sha256.eq_ignore_ascii_case(&right.sha256)
 }
 
+fn source_result(
+    source: &str,
+    result: &Result<SourceUpdate, String>,
+    current: &Version,
+) -> UpdateSourceResult {
+    match result {
+        Ok(candidate) => UpdateSourceResult {
+            source: source.into(),
+            version: candidate.version.to_string(),
+            state: match candidate.version.cmp(current) {
+                std::cmp::Ordering::Greater => "newer",
+                std::cmp::Ordering::Equal => "current",
+                std::cmp::Ordering::Less => "older",
+            }
+            .into(),
+            error: String::new(),
+        },
+        Err(error) => UpdateSourceResult {
+            source: source.into(),
+            version: String::new(),
+            state: "failed".into(),
+            error: error.clone(),
+        },
+    }
+}
+
 fn platform_key() -> Result<&'static str, String> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("windows", "x86_64") => Ok("windows-x86_64"),
@@ -274,15 +360,15 @@ fn platform_key() -> Result<&'static str, String> {
     }
 }
 
-fn asset_name(version: &Version) -> Result<String, String> {
+fn asset_name() -> Result<String, String> {
     match platform_key()? {
-        "windows-x86_64" => Ok(format!("Z_COM-v{version}-windows-x86_64.exe")),
-        "linux-x86_64" => Ok(format!("Z_COM-v{version}-linux-x86_64")),
+        "windows-x86_64" => Ok("Z_COM-windows-x86_64.exe".into()),
+        "linux-x86_64" => Ok("Z_COM-linux-x86_64".into()),
         platform => Err(format!("没有为 {platform} 配置更新文件名")),
     }
 }
 
-fn no_update_info(current_version: &str) -> UpdateInfo {
+fn no_update_info(current_version: &str, source_results: Vec<UpdateSourceResult>) -> UpdateInfo {
     UpdateInfo {
         available: false,
         current_version: current_version.to_string(),
@@ -293,20 +379,36 @@ fn no_update_info(current_version: &str) -> UpdateInfo {
         asset_name: String::new(),
         asset_size: 0,
         mirror_available: false,
+        source_warning: String::new(),
+        latest_confirmed: true,
+        source_results,
     }
+}
+
+fn unavailable_info(
+    current_version: &str,
+    warning: String,
+    source_results: Vec<UpdateSourceResult>,
+) -> UpdateInfo {
+    let mut info = no_update_info(current_version, source_results);
+    info.title = "无法确认最新版本".into();
+    info.source_warning = warning;
+    info.latest_confirmed = false;
+    info
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ManifestAsset, ReleaseAsset, SourceUpdate, check, same_asset, validate_manifest_asset,
+        ManifestAsset, ReleaseAsset, SourceUpdate, UpdateSourceResult, asset_name, check,
+        resolve_candidates, same_asset, validate_manifest_asset,
     };
     use semver::Version;
 
     #[test]
     fn accepts_matching_manifest_asset() {
         let release = ReleaseAsset {
-            name: "Z_COM-v0.2.0-windows-x86_64.exe".into(),
+            name: asset_name().expect("当前测试平台应受支持"),
             size: Some(42),
             browser_download_url: "https://example.invalid/file".into(),
         };
@@ -335,21 +437,119 @@ mod tests {
 
     #[test]
     fn mirror_requires_identical_asset_metadata() {
-        let candidate = SourceUpdate {
-            source: "GitHub".into(),
-            version: Version::new(0, 2, 0),
-            title: String::new(),
-            notes: String::new(),
-            asset_name: "file".into(),
-            asset_size: 42,
-            sha256: "A".repeat(64),
-            download_url: String::new(),
-        };
+        let candidate = source_update("GitHub", Version::new(0, 2, 0));
         let mut mirror = candidate.clone();
         mirror.source = "Gitee".into();
         assert!(same_asset(&candidate, &mirror));
         mirror.asset_size = 43;
         assert!(!same_asset(&candidate, &mirror));
+    }
+
+    #[test]
+    fn stable_asset_name_does_not_include_version() {
+        let name = asset_name().expect("当前测试平台应受支持");
+        assert!(!name.contains("v0."));
+        assert!(name.starts_with("Z_COM-"));
+    }
+
+    #[test]
+    fn does_not_claim_latest_when_a_source_failed() {
+        let result = resolve_candidates(
+            "0.1.5",
+            &Version::new(0, 1, 5),
+            vec![source_update("Gitee", Version::new(0, 1, 3))],
+            vec!["GitHub Release 查询失败".into()],
+            vec![source_status("GitHub", "", "failed")],
+        );
+        let (info, candidate) = result.expect("部分源失败应返回可展示的检测结果");
+        assert!(!info.available);
+        assert!(!info.latest_confirmed);
+        assert!(info.source_warning.contains("无法确认是否为最新版本"));
+        assert!(candidate.is_none());
+    }
+
+    #[test]
+    fn accepts_newer_version_from_one_available_source() {
+        let (info, candidate) = resolve_candidates(
+            "0.1.5",
+            &Version::new(0, 1, 5),
+            vec![source_update("GitHub", Version::new(0, 1, 6))],
+            vec!["Gitee Release 查询失败".into()],
+            vec![
+                source_status("GitHub", "0.1.6", "newer"),
+                source_status("Gitee", "", "failed"),
+            ],
+        )
+        .expect("单个可用源发现新版本时应允许更新");
+        assert!(info.available);
+        assert_eq!(info.version, "0.1.6");
+        assert!(info.source_warning.contains("Gitee"));
+        assert!(candidate.is_some());
+    }
+
+    #[test]
+    fn returns_both_results_when_all_sources_fail() {
+        let (info, candidate) = resolve_candidates(
+            "0.1.6",
+            &Version::new(0, 1, 6),
+            Vec::new(),
+            vec!["GitHub 检测失败".into(), "Gitee 检测失败".into()],
+            vec![
+                source_status("GitHub", "", "failed"),
+                source_status("Gitee", "", "failed"),
+            ],
+        )
+        .expect("双源失败也应返回可展示的检测结果");
+        assert!(!info.latest_confirmed);
+        assert_eq!(info.source_results.len(), 2);
+        assert!(candidate.is_none());
+    }
+
+    #[test]
+    fn confirms_latest_only_when_all_sources_succeed() {
+        let (info, candidate) = resolve_candidates(
+            "0.1.6",
+            &Version::new(0, 1, 6),
+            vec![
+                source_update("GitHub", Version::new(0, 1, 5)),
+                source_update("Gitee", Version::new(0, 1, 5)),
+            ],
+            Vec::new(),
+            vec![
+                source_status("GitHub", "0.1.5", "older"),
+                source_status("Gitee", "0.1.5", "older"),
+            ],
+        )
+        .expect("双源成功且均无新版本时应确认当前最新");
+        assert!(info.latest_confirmed);
+        assert!(!info.available);
+        assert!(candidate.is_none());
+    }
+
+    fn source_update(source: &str, version: Version) -> SourceUpdate {
+        SourceUpdate {
+            source: source.into(),
+            version,
+            title: String::new(),
+            notes: String::new(),
+            asset_name: asset_name().expect("当前测试平台应受支持"),
+            asset_size: 42,
+            sha256: "A".repeat(64),
+            download_url: String::new(),
+        }
+    }
+
+    fn source_status(source: &str, version: &str, state: &str) -> UpdateSourceResult {
+        UpdateSourceResult {
+            source: source.into(),
+            version: version.into(),
+            state: state.into(),
+            error: if state == "failed" {
+                format!("{source} 检测失败")
+            } else {
+                String::new()
+            },
+        }
     }
 
     #[test]

@@ -155,8 +155,21 @@ async fn check_jlink_sdk(configured_path: String) -> Result<String, String> {
 async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateInfo, String> {
     let result = tauri::async_runtime::spawn_blocking(|| update::check(env!("CARGO_PKG_VERSION")))
         .await
-        .map_err(|error| format!("更新检查后台任务失败: {error}"))??;
-    let (info, candidate) = result;
+        .map_err(|error| format!("更新检查后台任务失败: {error}"))?;
+    let (info, candidate) = match result {
+        Ok(result) => result,
+        Err(error) => {
+            if let Ok(mut logger) = state.logger.lock() {
+                logger.log_event(&format!("软件更新检查失败: {error}"));
+            }
+            return Err(error);
+        }
+    };
+    if !info.source_warning.is_empty()
+        && let Ok(mut logger) = state.logger.lock()
+    {
+        logger.log_event(&format!("软件更新源提醒: {}", info.source_warning));
+    }
     let mut update = state.update.lock().map_err(lock_error)?;
     update.candidate = candidate;
     update.downloaded_path = None;

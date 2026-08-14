@@ -92,12 +92,12 @@ npm run release:stage
 
 ```text
 dist/release/v版本号/
-├── Z_COM-v版本号-windows-x86_64.exe
-├── Z_COM-v版本号-linux-x86_64
+├── Z_COM-windows-x86_64.exe
+├── Z_COM-linux-x86_64
 └── release-manifest.json
 ```
 
-`release-manifest.json` 包含平台、文件名、大小和 SHA-256，可直接与两个执行文件一起上传到 GitHub/Gitee Release。脚本只接受当前版本的 Rust 绿色版路径，不会收集 `dist/` 中的旧版或其他语言产物。
+`release-manifest.json` 包含版本、平台、固定文件名、大小和 SHA-256，可直接与两个执行文件一起上传到 GitHub/Gitee Release。版本由 Release tag、版本目录和软件内部信息表达，执行文件名不再携带版本号。脚本只接受当前版本的 Rust 绿色版路径，不会收集 `dist/` 中的旧版或其他语言产物。
 
 ## 版本约定
 

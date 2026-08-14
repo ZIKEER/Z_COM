@@ -27,12 +27,12 @@ const assets = [
   {
     platform: "windows-x86_64",
     source: path.join(rootDir, "dist", portableDirectory, "Z_COM.exe"),
-    name: `Z_COM-v${version}-windows-x86_64.exe`,
+    name: "Z_COM-windows-x86_64.exe",
   },
   {
     platform: "linux-x86_64",
     source: path.join(rootDir, "dist", "linux-x86_64", portableDirectory, "Z_COM"),
-    name: `Z_COM-v${version}-linux-x86_64`,
+    name: "Z_COM-linux-x86_64",
   },
 ];
 
