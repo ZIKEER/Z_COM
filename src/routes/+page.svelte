@@ -177,6 +177,8 @@
   let instanceId = $state(1);
   let lastValidBaudrate = $state("115200");
   let resizing = $state(false);
+  let refreshingDevices = $state(false);
+  let refreshingCustomTargets = $state(false);
 
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
@@ -235,6 +237,8 @@
   });
 
   async function refreshDevices() {
+    if (refreshingDevices) return;
+    refreshingDevices = true;
     errorText = "";
     try {
       devices = await invoke<DeviceEntry[]>("list_devices");
@@ -251,6 +255,8 @@
       if (configChanged) await savePreferences();
     } catch (error) {
       showError(error);
+    } finally {
+      refreshingDevices = false;
     }
   }
 
@@ -678,10 +684,14 @@
   }
 
   async function refreshCustomProbeTargets() {
+    if (refreshingCustomTargets) return;
+    refreshingCustomTargets = true;
     try {
       customProbeTargets = await invoke<string[]>("list_custom_probe_targets");
     } catch (error) {
       showError(error);
+    } finally {
+      refreshingCustomTargets = false;
     }
   }
 
@@ -969,7 +979,7 @@
       <button class:active={mode === "probe"} onclick={() => setMode("probe")}>调试探针 / RTT</button>
     </div>
 
-    <button class="icon-button" title="刷新设备" onclick={refreshDevices} disabled={connected || connecting}><RefreshCw size={17} /></button>
+    <button class="icon-button" title={refreshingDevices ? "正在扫描设备" : "刷新设备"} onclick={refreshDevices} disabled={connected || connecting || refreshingDevices}><span class:spinning={refreshingDevices}><RefreshCw size={17} /></span></button>
 
     <div class="connection-fields">
       {#if mode === "serial"}
@@ -1111,7 +1121,7 @@
             J-Link 使用已安装的 SEGGER 官方驱动；其他探针使用 probe-rs。将 probe-rs Target YAML 放入自定义 MCU 目录即可扩展非 J-Link 目标；连接时会自动重新加载。
             当前已加载 {customProbeTargets.length} 个自定义目标。
             <button type="button" onclick={openProbeTargetDirectory}>打开目录</button>
-            <button type="button" onclick={refreshCustomProbeTargets}>重新加载</button>
+            <button type="button" onclick={refreshCustomProbeTargets} disabled={refreshingCustomTargets}>{refreshingCustomTargets ? "加载中..." : "重新加载"}</button>
             Windows 下部分非 J-Link 探针需要 WinUSB 驱动；J-Link 无需切换 SEGGER 驱动。
           </p>
         </fieldset>
@@ -1187,6 +1197,8 @@
   button:disabled { opacity: .48; cursor: default; }
   .icon-button { width: 30px; height: 30px; padding: 0; display: inline-grid; place-items: center; flex: 0 0 30px; }
   .icon-button.active { color: #202020; background: #e1e1e1; border-color: #777; }
+  .spinning { display: grid; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .icon-button.subtle { border-color: transparent; background: transparent; }
   .command-button, .run-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f44336; color: white; border-color: #d7352b; font-weight: 600; padding: 0 12px; white-space: nowrap; }
   .command-button:hover:not(:disabled) { background: #e53935; border-color: #c62828; }

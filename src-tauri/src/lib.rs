@@ -49,12 +49,21 @@ fn bootstrap(state: State<'_, AppState>) -> Result<BootstrapData, String> {
 }
 
 #[tauri::command]
-fn list_custom_probe_targets(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    transport::list_custom_probe_targets(&state.config_directory.join("probe_rs_targets"))
+async fn list_custom_probe_targets(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let directory = state.config_directory.join("probe_rs_targets");
+    tauri::async_runtime::spawn_blocking(move || transport::list_custom_probe_targets(&directory))
+        .await
+        .map_err(|error| format!("自定义目标后台任务失败: {error}"))?
 }
 
 #[tauri::command]
-fn list_local_ipv4_addresses() -> Vec<String> {
+async fn list_local_ipv4_addresses() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(collect_local_ipv4_addresses)
+        .await
+        .map_err(|error| format!("网卡枚举后台任务失败: {error}"))
+}
+
+fn collect_local_ipv4_addresses() -> Vec<String> {
     let mut addresses = vec!["0.0.0.0".to_string(), "127.0.0.1".to_string()];
     if let Ok(interfaces) = if_addrs::get_if_addrs() {
         addresses.extend(interfaces.into_iter().filter_map(|interface| match interface.addr {
@@ -75,12 +84,20 @@ fn list_local_ipv4_addresses() -> Vec<String> {
 }
 
 #[tauri::command]
-fn list_devices(state: State<'_, AppState>) -> Vec<DeviceEntry> {
+async fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceEntry>, String> {
     let (include_probes, show_generic_jtag_adapters) = state
         .config
         .lock()
         .map(|value| (value.support_probes, value.show_generic_jtag_adapters))
         .unwrap_or((true, false));
+    tauri::async_runtime::spawn_blocking(move || {
+        collect_devices(include_probes, show_generic_jtag_adapters)
+    })
+    .await
+    .map_err(|error| format!("设备扫描后台任务失败: {error}"))
+}
+
+fn collect_devices(include_probes: bool, show_generic_jtag_adapters: bool) -> Vec<DeviceEntry> {
     let mut devices = serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
