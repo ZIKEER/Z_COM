@@ -3,7 +3,6 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
-  import { openPath } from "@tauri-apps/plugin-opener";
   import {
     ArrowDown,
     ArrowUp,
@@ -24,6 +23,7 @@
     Square,
     Trash2,
     Upload,
+    X,
   } from "@lucide/svelte";
 
   type TransportMode = "serial" | "socket" | "probe";
@@ -182,6 +182,10 @@
   let refreshingDevices = $state(false);
   let refreshingCustomTargets = $state(false);
   let jlinkSdkStatus = $state("尚未检查");
+  let connectionWatchdog: number | undefined;
+  let connectionTimedOut = false;
+
+  const CONNECTION_TIMEOUT_MS = 12_000;
 
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
@@ -210,7 +214,7 @@
           config.baudrate = "115200";
         }
         lastValidBaudrate = config.baudrate;
-        draftConfig = structuredClone(config);
+        draftConfig = structuredClone($state.snapshot(config));
         extended = data.extended;
         version = data.version;
         buildTimestamp = data.buildTimestamp;
@@ -230,7 +234,10 @@
         errorText = `未连接到 Tauri 后端: ${stringifyError(error)}`;
       }
     })();
-    return () => unlisten?.();
+    return () => {
+      clearConnectionWatchdog();
+      unlisten?.();
+    };
   });
 
   $effect(() => {
@@ -264,13 +271,23 @@
   }
 
   async function toggleConnection() {
-    if (connected || connecting) {
+    if (connected) {
       await invoke("disconnect_transport");
       return;
     }
+    if (connecting) {
+      clearConnectionWatchdog();
+      connecting = false;
+      statusText = "已取消连接";
+      appendEvent("info", "用户取消连接");
+      void invoke("disconnect_transport").catch(showError);
+      return;
+    }
     errorText = "";
+    connectionTimedOut = false;
     connecting = true;
     statusText = "正在连接...";
+    startConnectionWatchdog();
     try {
       if (mode === "serial") {
         config.baudrate = String(validatedBaudrate(config.baudrate));
@@ -302,9 +319,31 @@
         },
       });
     } catch (error) {
+      clearConnectionWatchdog();
       connecting = false;
       statusText = "连接失败";
       showError(error);
+    }
+  }
+
+  function startConnectionWatchdog() {
+    clearConnectionWatchdog();
+    connectionWatchdog = window.setTimeout(() => {
+      if (!connecting) return;
+      connectionTimedOut = true;
+      connecting = false;
+      statusText = "连接超时";
+      const message = `连接在 ${CONNECTION_TIMEOUT_MS / 1000} 秒内未完成，已停止本次连接`;
+      errorText = message;
+      appendEvent("error", message);
+      void invoke("disconnect_transport").catch(() => {});
+    }, CONNECTION_TIMEOUT_MS);
+  }
+
+  function clearConnectionWatchdog() {
+    if (connectionWatchdog !== undefined) {
+      window.clearTimeout(connectionWatchdog);
+      connectionWatchdog = undefined;
     }
   }
 
@@ -347,19 +386,27 @@
   }
 
   function handleTransportEvent(event: TransportEvent) {
+    if (event.kind === "connected" && connectionTimedOut) {
+      void invoke("disconnect_transport").catch(() => {});
+      return;
+    }
     if (event.kind !== "data" && event.message) {
       appendEvent(event.kind, event.message);
     }
     if (event.kind === "connected") {
+      clearConnectionWatchdog();
       connected = true;
       connecting = false;
       statusText = event.message;
     } else if (event.kind === "disconnected") {
+      clearConnectionWatchdog();
       connected = false;
       connecting = false;
       autoSend = false;
-      statusText = "未连接";
+      statusText = connectionTimedOut ? "连接超时" : "未连接";
+      connectionTimedOut = false;
     } else if (event.kind === "error") {
+      clearConnectionWatchdog();
       connected = false;
       connecting = false;
       errorText = event.message;
@@ -740,7 +787,7 @@
 
   async function openProbeTargetDirectory() {
     try {
-      await openPath(probeTargetDirectory);
+      await invoke("open_app_directory", { directory: "probe_targets" });
     } catch (error) {
       showError(error);
     }
@@ -748,7 +795,7 @@
 
   async function openDataDirectory() {
     try {
-      await openPath(dataDirectory);
+      await invoke("open_app_directory", { directory: "config" });
     } catch (error) {
       showError(error);
     }
@@ -1037,8 +1084,8 @@
     </div>
 
     <div class="top-actions">
-      <button class:danger={connected} class="command-button" onclick={toggleConnection} disabled={connecting}>
-        {#if connected}<Link2Off size={17} />断开{:else}<Link size={17} />{connecting ? "连接中" : "连接"}{/if}
+      <button class:danger={connected} class:connecting class="command-button" onclick={toggleConnection}>
+        {#if connected}<Link2Off size={17} />断开{:else if connecting}<Square size={15} />取消{:else}<Link size={17} />连接{/if}
       </button>
       <button class="icon-button" title="更多设置" onclick={openSettings}><Settings size={17} /></button>
       <button class="icon-button" title="关于 Z_COM" onclick={() => aboutOpen = true}><CircleHelp size={17} /></button>
@@ -1181,18 +1228,32 @@
 {#if aboutOpen}
   <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && (aboutOpen = false)}>
     <div class="about-dialog" role="dialog" aria-modal="true" aria-labelledby="about-title">
-      <header><h2 id="about-title">关于 Z_COM</h2><button class="icon-button" title="关闭" onclick={() => aboutOpen = false}><Minus size={17} /></button></header>
+      <header><h2 id="about-title">关于 Z_COM</h2><button class="icon-button subtle" title="关闭" onclick={() => aboutOpen = false}><X size={17} /></button></header>
       <div class="about-body">
-        <div class="about-logo">Z</div>
-        <dl>
-          <dt>软件版本</dt><dd>v{version}</dd>
-          <dt>构建时间</dt><dd>{buildTimestamp ? new Date(buildTimestamp * 1000).toLocaleString("zh-CN", { hour12: false }) : "未知"}</dd>
-          <dt>实例索引</dt><dd>实例 {instanceId}</dd>
-          <dt>通信后端</dt><dd>串口、TCP/UDP、SEGGER J-Link RTT、probe-rs RTT</dd>
-          <dt>数据目录</dt><dd title={dataDirectory}>{dataDirectory}</dd>
-        </dl>
+        <section class="about-hero">
+          <img class="about-logo" src="/serial_comm.svg" alt="Z_COM 图标" />
+          <div>
+            <div class="about-name"><strong>Z_COM</strong><span>v{version}</span></div>
+            <p>便携式跨平台通信与 RTT 调试终端</p>
+            <div class="about-badges"><span>绿色免安装</span><span>Windows / Linux</span><span>实例 {instanceId}</span></div>
+          </div>
+        </section>
+        <section class="about-capabilities" aria-label="主要能力">
+          <div><strong>串口通信</strong><span>运行时参数调整</span></div>
+          <div><strong>网络通信</strong><span>TCP / UDP 双角色</span></div>
+          <div><strong>J-Link RTT</strong><span>SEGGER 官方后端</span></div>
+          <div><strong>通用探针 RTT</strong><span>probe-rs + 自定义目标</span></div>
+        </section>
+        <section class="about-runtime">
+          <h3>运行信息</h3>
+          <dl>
+            <dt>构建时间</dt><dd>{buildTimestamp ? new Date(buildTimestamp * 1000).toLocaleString("zh-CN", { hour12: false }) : "未知"}</dd>
+            <dt>数据目录</dt><dd><code title={dataDirectory}>{dataDirectory}</code></dd>
+            <dt>数据保护</dt><dd>通信报文按日期自动写入日志，无需手动保存</dd>
+          </dl>
+        </section>
       </div>
-      <footer><button disabled title="远期开展计划">检查更新</button><button class="primary" onclick={() => aboutOpen = false}>确定</button></footer>
+      <footer><span>更新检查功能规划中</span><button class="primary" onclick={() => aboutOpen = false}>完成</button></footer>
     </div>
   </div>
 {/if}
@@ -1230,8 +1291,8 @@
   .connection-fields .port input { width: 82px; min-width: 0; }
   .connection-fields .probe-select select { width: clamp(190px, 27vw, 360px); }
   .connection-fields .chip input { width: clamp(145px, 18vw, 220px); }
-  .connection-fields .reset-check { white-space: nowrap; }
-  .connection-fields .reset-check input { width: auto; min-width: 0; height: auto; padding: 0; }
+  .connection-fields .reset-check { min-height: 30px; padding: 0 5px; white-space: nowrap; cursor: pointer; }
+  .connection-fields .reset-check input { width: 18px; min-width: 18px; height: 18px; padding: 0; accent-color: #16865a; cursor: pointer; }
   .top-actions { display: flex; align-items: center; gap: 4px; }
   button { border: 1px solid #adadad; background: #f5f5f5; border-radius: 2px; min-height: 28px; cursor: pointer; }
   button:hover:not(:disabled) { background: #e5f1fb; border-color: #0078d4; }
@@ -1243,6 +1304,8 @@
   .icon-button.subtle { border-color: transparent; background: transparent; }
   .command-button, .run-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f44336; color: white; border-color: #d7352b; font-weight: 600; padding: 0 12px; white-space: nowrap; }
   .command-button:hover:not(:disabled) { background: #e53935; border-color: #c62828; }
+  .command-button.connecting { background: #d97706; border-color: #b96100; }
+  .command-button.connecting:hover:not(:disabled) { background: #c86c04; border-color: #a95600; }
   .command-button.danger, .run-button { background: #4caf50; border-color: #429846; }
   .command-button.danger:hover:not(:disabled), .run-button:hover:not(:disabled) { background: #43a047; border-color: #388e3c; }
   .send-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f5f5f5; color: #202020; border-color: #adadad; font-weight: 400; padding: 0 12px; white-space: nowrap; }
@@ -1325,7 +1388,8 @@
   fieldset label { display: flex; flex-direction: column; gap: 4px; color: #56616a; }
   fieldset input, fieldset select { height: 29px; padding: 3px 6px; min-width: 0; width: 100%; }
   fieldset .check-row { flex-direction: row; align-items: center; grid-column: 1 / -1; }
-  fieldset .check-row input { width: auto; height: auto; }
+  fieldset .check-row { min-height: 25px; cursor: pointer; }
+  fieldset .check-row input { width: 18px; min-width: 18px; height: 18px; padding: 0; accent-color: #16865a; cursor: pointer; }
   .probe-settings, .data-settings { grid-column: 1 / -1; }
   .driver-note { grid-column: 1 / -1; margin: 2px 0 0; color: #6d5d31; background: #f5efdc; border-left: 3px solid #c49a38; padding: 6px 8px; font-size: 12px; }
   .parameter-note { grid-column: 1 / -1; margin: 0; color: #56616a; font-size: 12px; line-height: 1.45; }
@@ -1341,18 +1405,33 @@
   .settings-dialog > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 8px 12px; border-top: 1px solid #bdc5cb; }
   .settings-dialog > footer button { min-width: 72px; padding: 0 12px; }
   .settings-dialog > footer .primary { background: #4caf50; color: #fff; border-color: #429846; }
-  .about-dialog { width: min(590px, 94vw); background: #f5f5f5; border: 1px solid #777; box-shadow: 0 16px 45px rgba(20, 25, 29, .24); }
-  .about-dialog > header { height: 42px; display: flex; align-items: center; padding: 0 10px 0 14px; border-bottom: 1px solid #bdc5cb; }
+  .about-dialog { width: min(620px, 94vw); overflow: hidden; background: #f8faf9; border: 1px solid #8f9a94; border-radius: 10px; box-shadow: 0 20px 55px rgba(20, 35, 28, .28); }
+  .about-dialog > header { height: 44px; display: flex; align-items: center; padding: 0 9px 0 18px; background: #fff; border-bottom: 1px solid #dce4df; }
   .about-dialog > header h2 { margin: 0; font-size: 15px; }
   .about-dialog > header button { margin-left: auto; }
-  .about-body { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 16px; padding: 18px; }
-  .about-logo { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 13px; color: #fff; background: #18794e; font-size: 34px; font-weight: 800; }
-  .about-body dl { margin: 0; display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 9px 12px; align-items: start; }
-  .about-body dt { color: #667078; }
-  .about-body dd { margin: 0; overflow-wrap: anywhere; }
-  .about-dialog > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 8px 12px; border-top: 1px solid #bdc5cb; }
-  .about-dialog > footer button { min-width: 82px; padding: 0 12px; }
-  .about-dialog > footer .primary { background: #4caf50; color: #fff; border-color: #429846; }
+  .about-body { display: grid; gap: 14px; padding: 18px; }
+  .about-hero { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: center; }
+  .about-logo { width: 72px; height: 72px; border-radius: 16px; box-shadow: 0 7px 20px rgba(24, 121, 78, .2); }
+  .about-name { display: flex; align-items: center; gap: 9px; }
+  .about-name strong { color: #153c2c; font-size: 25px; letter-spacing: .5px; }
+  .about-name > span { padding: 3px 8px; color: #176b48; background: #e5f4ec; border: 1px solid #b9dfcc; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .about-hero p { margin: 4px 0 9px; color: #52635b; font-size: 13px; }
+  .about-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .about-badges span { padding: 3px 7px; color: #52635b; background: #fff; border: 1px solid #d6dfda; border-radius: 4px; font-size: 11px; }
+  .about-capabilities { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .about-capabilities > div { display: grid; gap: 2px; padding: 9px 11px; background: #fff; border: 1px solid #dce4df; border-radius: 6px; }
+  .about-capabilities strong { color: #294b3c; font-size: 12px; }
+  .about-capabilities span { color: #718078; font-size: 11px; }
+  .about-runtime { padding: 12px 14px; background: #eef5f1; border: 1px solid #d2e2d9; border-radius: 7px; }
+  .about-runtime h3 { margin: 0 0 9px; color: #294b3c; font-size: 13px; }
+  .about-runtime dl { margin: 0; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 7px 10px; }
+  .about-runtime dt { color: #68776f; }
+  .about-runtime dd { margin: 0; color: #35443d; overflow-wrap: anywhere; }
+  .about-runtime code { color: #176b48; font: 12px "Cascadia Mono", Consolas, monospace; }
+  .about-dialog > footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 9px 14px; background: #fff; border-top: 1px solid #dce4df; }
+  .about-dialog > footer span { margin-right: auto; color: #829087; font-size: 11px; }
+  .about-dialog > footer button { min-width: 82px; padding: 0 14px; }
+  .about-dialog > footer .primary { background: #16865a; color: #fff; border-color: #11764e; }
 
   @media (max-width: 900px) {
     .connection-bar { flex-wrap: wrap; height: auto; }

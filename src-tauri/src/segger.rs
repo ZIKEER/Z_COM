@@ -26,6 +26,7 @@ const RTT_DIRECTION_UP: c_int = 0;
 const READ_BUFFER_SIZE: usize = 8192;
 
 static JLINK_ACCESS: OnceLock<Mutex<()>> = OnceLock::new();
+static JLINK_MESSAGES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -57,7 +58,9 @@ impl Default for JLinkConnectInfo {
 
 type EmuGetList = unsafe extern "system" fn(c_int, *mut JLinkConnectInfo, c_int) -> c_int;
 type EmuSelectByUsbSerial = unsafe extern "system" fn(c_uint) -> c_int;
-type OpenEx = unsafe extern "system" fn(*mut c_void, *mut c_void) -> *const c_char;
+type LogCallback = unsafe extern "system" fn(*const c_char);
+type OpenEx = unsafe extern "system" fn(LogCallback, LogCallback) -> *const c_char;
+type SetOutHandler = unsafe extern "system" fn(LogCallback);
 type Close = unsafe extern "system" fn();
 type TifSelect = unsafe extern "system" fn(c_int) -> c_int;
 type SetSpeed = unsafe extern "system" fn(c_uint);
@@ -76,6 +79,8 @@ struct JLinkLibrary {
     emu_get_list: EmuGetList,
     emu_select_by_usb_serial: EmuSelectByUsbSerial,
     open_ex: OpenEx,
+    set_error_out_handler: SetOutHandler,
+    set_warn_out_handler: SetOutHandler,
     close: Close,
     tif_select: TifSelect,
     set_speed: SetSpeed,
@@ -115,6 +120,11 @@ impl JLinkLibrary {
                         EmuSelectByUsbSerial
                     ),
                     open_ex: symbol!("JLINKARM_OpenEx", OpenEx),
+                    set_error_out_handler: symbol!(
+                        "JLINKARM_SetErrorOutHandler",
+                        SetOutHandler
+                    ),
+                    set_warn_out_handler: symbol!("JLINKARM_SetWarnOutHandler", SetOutHandler),
                     close: symbol!("JLINKARM_Close", Close),
                     tif_select: symbol!("JLINKARM_TIF_Select", TifSelect),
                     set_speed: symbol!("JLINKARM_SetSpeed", SetSpeed),
@@ -168,11 +178,14 @@ impl JLinkSession {
     fn open(&mut self, reset: bool) -> Result<(), String> {
         unsafe {
             (self.api.close)();
+            clear_jlink_messages();
+            (self.api.set_error_out_handler)(capture_jlink_message);
+            (self.api.set_warn_out_handler)(capture_jlink_message);
             let selected = (self.api.emu_select_by_usb_serial)(self.serial_number);
             if selected < 0 {
                 return Err(format!("未找到 J-Link，序列号 {}", self.serial_number));
             }
-            let open_error = (self.api.open_ex)(ptr::null_mut(), ptr::null_mut());
+            let open_error = (self.api.open_ex)(capture_jlink_message, capture_jlink_message);
             if !open_error.is_null() {
                 return Err(format!(
                     "打开 J-Link 失败: {}",
@@ -187,7 +200,12 @@ impl JLinkSession {
             self.select_device()?;
             let connected = (self.api.connect)();
             if connected < 0 {
-                return Err(format!("J-Link 连接目标芯片失败，错误码 {connected}"));
+                let details = take_jlink_messages();
+                return Err(if details.is_empty() {
+                    format!("J-Link 连接目标芯片失败，错误码 {connected}")
+                } else {
+                    format!("J-Link 连接目标芯片失败，错误码 {connected}: {details}")
+                });
             }
             if reset {
                 (self.api.set_reset_delay)(0);
@@ -302,6 +320,44 @@ impl JLinkSession {
         thread::sleep(Duration::from_millis(200));
         self.open(false)
     }
+}
+
+unsafe extern "system" fn capture_jlink_message(message: *const c_char) {
+    if message.is_null() {
+        return;
+    }
+    let text = unsafe { CStr::from_ptr(message) }
+        .to_string_lossy()
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return;
+    }
+    if let Ok(mut messages) = JLINK_MESSAGES.lock() {
+        if messages.last() != Some(&text) {
+            messages.push(text);
+        }
+        if messages.len() > 20 {
+            messages.remove(0);
+        }
+    }
+}
+
+fn clear_jlink_messages() {
+    if let Ok(mut messages) = JLINK_MESSAGES.lock() {
+        messages.clear();
+    }
+}
+
+fn take_jlink_messages() -> String {
+    JLINK_MESSAGES
+        .lock()
+        .map(|mut messages| {
+            let result = messages.join("；");
+            messages.clear();
+            result
+        })
+        .unwrap_or_default()
 }
 
 impl Drop for JLinkSession {

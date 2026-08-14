@@ -19,6 +19,7 @@ use models::{
 };
 use probe_rs::probe::list::Lister;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 use transport::TransportManager;
 
 pub(crate) struct AppState {
@@ -33,19 +34,39 @@ pub(crate) struct AppState {
 
 #[tauri::command]
 fn bootstrap(state: State<'_, AppState>) -> Result<BootstrapData, String> {
+    let relative_data_directory = if state.instance_id == 1 {
+        "./config".to_string()
+    } else {
+        format!("./instance_{}/config", state.instance_id)
+    };
     Ok(BootstrapData {
         config: state.config.lock().map_err(lock_error)?.clone(),
         extended: state.extended.lock().map_err(lock_error)?.clone(),
         version: env!("CARGO_PKG_VERSION").into(),
         build_timestamp: env!("Z_COM_BUILD_TIMESTAMP").parse().unwrap_or_default(),
-        data_directory: state.config_directory.display().to_string(),
-        probe_target_directory: state
-            .config_directory
-            .join("probe_rs_targets")
-            .display()
-            .to_string(),
+        data_directory: relative_data_directory.clone(),
+        probe_target_directory: format!("{relative_data_directory}/probe_rs_targets"),
         instance_id: state.instance_id,
     })
+}
+
+#[tauri::command]
+fn open_app_directory(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    directory: String,
+) -> Result<(), String> {
+    let path = match directory.as_str() {
+        "config" => state.config_directory.clone(),
+        "probe_targets" => state.config_directory.join("probe_rs_targets"),
+        _ => return Err("不支持打开该目录".into()),
+    };
+    app.opener()
+        .open_path(
+            dunce::simplified(&path).to_string_lossy().into_owned(),
+            None::<String>,
+        )
+        .map_err(|error| format!("打开目录失败: {error}"))
 }
 
 #[tauri::command]
@@ -364,6 +385,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             bootstrap,
+            open_app_directory,
             list_custom_probe_targets,
             list_local_ipv4_addresses,
             list_devices,
