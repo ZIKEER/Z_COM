@@ -19,7 +19,7 @@ sudo apt install -y build-essential curl file libayatana-appindicator3-dev \
 npm ci
 npm run check
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --locked
 npm run pack
 ```
 

@@ -20,8 +20,10 @@
 
 ## 当前验证状态
 
-- Windows 开发、检查、测试和绿色版打包已通过。
-- Ubuntu 24.04 WSL2 原生依赖安装、前端检查、前端构建、11 项 Rust 测试和 release 打包已通过。
+- Windows 开发、前端检查、前端构建、Rust 测试和单文件绿色版打包已通过。
+- Ubuntu 24.04 WSL2 原生依赖安装、前端检查、前端构建、Rust 测试和 release 打包已通过。
+- 当前 Rust 测试基线为 21 项通过，另有 1 项需要访问 GitHub/Gitee 的在线测试默认忽略。
+- Apache-2.0 许可证、NOTICE 和第三方声明已内嵌，Windows/Linux 主程序均不依赖外置法律文本。
 - WSLg 软件渲染模式下完成启动存活测试，产物依赖无缺失。
 - Windows 已完成隔离目录中的 updater 备份、替换、启动和清理集成测试。
 - WSL 不能代替真实 Linux 桌面、串口、USB 探针和 SEGGER SDK 硬件验收。
