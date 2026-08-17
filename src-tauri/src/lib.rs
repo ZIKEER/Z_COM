@@ -575,12 +575,82 @@ pub fn run_update_mode() -> Option<Result<(), String>> {
     update_apply::run_update_mode()
 }
 
+#[cfg(target_os = "windows")]
+fn set_windows_window_icon(window: &tauri::Window) -> Result<(), String> {
+    use std::ffi::c_void;
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn CreateIconFromResourceEx(
+            resource: *const u8,
+            resource_size: u32,
+            is_icon: i32,
+            version: u32,
+            width: i32,
+            height: i32,
+            flags: u32,
+        ) -> *mut c_void;
+        fn SendMessageW(window: *mut c_void, message: u32, wparam: usize, lparam: isize) -> isize;
+    }
+
+    const WM_SETICON: u32 = 0x0080;
+    const ICON_SMALL: usize = 0;
+    const ICON_SMALL2: usize = 2;
+    const LR_DEFAULTCOLOR: u32 = 0;
+    const ICON_RESOURCE_VERSION: u32 = 0x0003_0000;
+    let icon_file = include_bytes!("../icons/icon.ico");
+    let entry_count = u16::from_le_bytes([icon_file[4], icon_file[5]]) as usize;
+    let (icon_offset, icon_size) = (0..entry_count)
+        .find_map(|index| {
+            let entry = 6 + index * 16;
+            let width = if icon_file[entry] == 0 { 256 } else { icon_file[entry] as usize };
+            if width != 32 {
+                return None;
+            }
+            let size = u32::from_le_bytes(icon_file[entry + 8..entry + 12].try_into().ok()?) as usize;
+            let offset = u32::from_le_bytes(icon_file[entry + 12..entry + 16].try_into().ok()?) as usize;
+            Some((offset, size))
+        })
+        .ok_or_else(|| "图标资源缺少 32×32 图层".to_string())?;
+
+    let window_handle = window
+        .hwnd()
+        .map_err(|error| format!("获取主窗口句柄失败: {error}"))?;
+    let icon = unsafe {
+        CreateIconFromResourceEx(
+            icon_file[icon_offset..icon_offset + icon_size].as_ptr(),
+            icon_size as u32,
+            1,
+            ICON_RESOURCE_VERSION,
+            32,
+            32,
+            LR_DEFAULTCOLOR,
+        )
+    };
+    if icon.is_null() {
+        return Err("无法从程序资源加载 32×32 窗口图标".into());
+    }
+    unsafe {
+        SendMessageW(window_handle.0, WM_SETICON, ICON_SMALL, icon as isize);
+        SendMessageW(window_handle.0, WM_SETICON, ICON_SMALL2, icon as isize);
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     update_apply::schedule_cleanup();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_page_load(|webview, payload| {
+            #[cfg(target_os = "windows")]
+            if payload.event() == tauri::webview::PageLoadEvent::Finished
+                && let Err(error) = set_windows_window_icon(&webview.window())
+            {
+                eprintln!("设置 Windows 窗口图标失败: {error}");
+            }
+        })
         .setup(|app| {
             let instance = allocate_instance()?;
             let config_directory = instance.data_root.join("config");
