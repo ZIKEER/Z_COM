@@ -7,6 +7,7 @@
   import {
     ArrowDown,
     ArrowUp,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     CircleHelp,
@@ -202,6 +203,7 @@
   let socketProtocol = $state<"TCP" | "UDP">("TCP");
   let socketRole = $state<"Client" | "Server">("Client");
   let selectedProbe = $state("");
+  let probeChipMenuOpen = $state(false);
   let connected = $state(false);
   let connecting = $state(false);
   let statusText = $state("未连接");
@@ -262,8 +264,8 @@
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
   const probeChipOptions = $derived([
-    ...new Set([...config.probe_chip_history, ...customProbeTargets]),
-  ]);
+    ...new Set([config.probe_chip, ...config.probe_chip_history, ...customProbeTargets]),
+  ].filter((chip) => chip.trim()));
   const customBaudrateOptions = $derived(normalizedBaudrateHistory(config.baudrate_history));
 
   onMount(() => {
@@ -721,6 +723,7 @@
   function handleWindowKeyDown(event: KeyboardEvent) {
     if (event.key !== "Escape") return;
     closeContextMenus();
+    probeChipMenuOpen = false;
     if (customBaudrateOpen) closeCustomBaudrateDialog();
   }
 
@@ -1221,6 +1224,37 @@
     void savePreferences();
   }
 
+  function persistProbeChip() {
+    const chip = config.probe_chip.trim();
+    config.probe_chip = chip;
+    if (chip && !config.probe_chip_history.some((value) => value.toLowerCase() === chip.toLowerCase())) {
+      config.probe_chip_history = [chip, ...config.probe_chip_history].slice(0, 20);
+    }
+    void savePreferences();
+  }
+
+  function selectProbeChip(chip: string) {
+    config.probe_chip = chip;
+    probeChipMenuOpen = false;
+    persistProbeChip();
+  }
+
+  function handlePageClick(event: MouseEvent) {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest(".chip-combobox")) {
+      probeChipMenuOpen = false;
+    }
+  }
+
+  function handleProbeChipKeyDown(event: KeyboardEvent) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      probeChipMenuOpen = true;
+    } else if (event.key === "Escape") {
+      probeChipMenuOpen = false;
+    }
+  }
+
   function toggleSidebar() {
     sidebarOpen = !sidebarOpen;
     config.preset_panel_visible = sidebarOpen;
@@ -1392,7 +1426,7 @@
 </script>
 
 <svelte:head><title>{instanceId > 1 ? `Z_COM - 实例 ${instanceId}` : "Z_COM"}</title></svelte:head>
-<svelte:window oncontextmenu={showPageContextMenu} onkeydown={handleWindowKeyDown} />
+<svelte:window onclick={handlePageClick} oncontextmenu={showPageContextMenu} onkeydown={handleWindowKeyDown} />
 
 <main class="app-shell" class:resizing style={`--send-panel-height:calc(${config.send_panel_ratio * 100}vh - ${config.send_panel_ratio * 69}px);--extended-panel-width:${config.extended_panel_ratio * 100}%`}>
   <header class="connection-bar">
@@ -1420,7 +1454,21 @@
         <label class="port"><span>端口</span><input type="number" min="1" max="65535" bind:value={config.socket_port} onblur={savePreferences} disabled={connected} /></label>
       {:else}
         <label class="probe-select"><span>调试探针</span><select bind:value={selectedProbe} onchange={persistSelectedProbe} disabled={connected}>{#each probeDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
-        <label class="chip"><span>目标芯片</span><input list="chip-history" bind:value={config.probe_chip} onblur={savePreferences} placeholder="例如 nRF52840_xxAA" disabled={connected} /></label>
+        <div class="chip"><span>目标芯片</span><div class="chip-combobox" class:open={probeChipMenuOpen}>
+          <input bind:value={config.probe_chip} onblur={persistProbeChip} onkeydown={handleProbeChipKeyDown} placeholder="输入或选择目标芯片" disabled={connected} role="combobox" aria-label="目标芯片" aria-autocomplete="list" aria-controls="probe-chip-options" aria-expanded={probeChipMenuOpen} />
+          <button type="button" class="chip-combobox-toggle" title="选择目标芯片" aria-label="选择目标芯片" aria-expanded={probeChipMenuOpen} onclick={() => probeChipMenuOpen = !probeChipMenuOpen} disabled={connected}><span class="chip-combobox-chevron"><ChevronDown size={15} /></span></button>
+          {#if probeChipMenuOpen && !connected}
+            <div id="probe-chip-options" class="chip-combobox-menu" role="listbox">
+              {#if probeChipOptions.length}
+                {#each probeChipOptions as chip}
+                  <button type="button" class:selected={chip === config.probe_chip} role="option" aria-selected={chip === config.probe_chip} title={chip} onmousedown={(event) => event.preventDefault()} onclick={() => selectProbeChip(chip)}>{chip}</button>
+                {/each}
+              {:else}
+                <span>暂无记录，请直接输入</span>
+              {/if}
+            </div>
+          {/if}
+        </div></div>
         <datalist id="chip-history">{#each probeChipOptions as chip}<option value={chip}></option>{/each}</datalist>
         <label class="reset-check"><input type="checkbox" bind:checked={config.probe_reset} onchange={savePreferences} />连接后复位</label>
       {/if}
@@ -1719,14 +1767,26 @@
   .connection-bar { grid-row: 1; display: flex; align-items: center; gap: 7px; padding: 5px 7px; background: #f5f5f5; border-bottom: 1px solid #b8b8b8; min-width: 0; }
   .connection-fields { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
   .connection-fields label { display: flex; align-items: center; gap: 5px; min-width: 0; }
-  .connection-fields label > span { color: #404040; white-space: nowrap; }
+  .connection-fields label > span, .connection-fields .chip > span { color: #404040; white-space: nowrap; }
   .connection-fields select, .connection-fields input { height: 30px; padding: 4px 7px; min-width: 130px; }
+  .connection-fields select { padding-right: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .connection-fields label:first-child select { width: clamp(160px, 23vw, 300px); }
   .connection-fields .short select { min-width: 118px; width: 128px; }
   .connection-fields .host input { width: 150px; }
   .connection-fields .port input { width: 82px; min-width: 0; }
   .connection-fields .probe-select select { width: clamp(190px, 27vw, 360px); }
-  .connection-fields .chip input { width: clamp(145px, 18vw, 220px); }
+  .connection-fields .chip { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .chip-combobox { position: relative; width: clamp(145px, 18vw, 220px); min-width: 145px; }
+  .connection-fields .chip-combobox input { width: 100%; min-width: 0; padding-right: 32px; }
+  .chip-combobox-toggle { position: absolute; top: 1px; right: 1px; width: 28px; height: 28px; min-height: 0; padding: 0; display: grid; place-items: center; background: transparent; border: 0; border-left: 1px solid transparent; }
+  .chip-combobox-toggle:hover:not(:disabled), .chip-combobox.open .chip-combobox-toggle { background: #e5f1fb; border-left-color: #b8b8b8; }
+  .chip-combobox.open input { border-color: #0078d4; box-shadow: 0 0 0 1px rgba(0, 120, 212, .12); }
+  .chip-combobox-chevron { display: grid; transition: transform .12s ease; }
+  .chip-combobox.open .chip-combobox-chevron { transform: rotate(180deg); }
+  .chip-combobox-menu { position: absolute; z-index: 80; top: calc(100% + 2px); left: 0; min-width: 100%; max-width: 340px; max-height: 220px; overflow-y: auto; padding: 3px; background: #fff; border: 1px solid #a7a7a7; border-radius: 2px; box-shadow: 0 5px 14px rgba(0, 0, 0, .2); }
+  .chip-combobox-menu button { width: 100%; min-height: 28px; padding: 4px 8px; overflow: hidden; color: #202020; background: #fff; border: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-combobox-menu button:hover, .chip-combobox-menu button.selected { background: #e5f1fb; }
+  .chip-combobox-menu > span { display: block; padding: 7px 8px; color: #777; white-space: nowrap; }
   .connection-fields .reset-check { min-height: 30px; padding: 0 5px; white-space: nowrap; cursor: pointer; }
   .connection-fields .reset-check input { width: 18px; min-width: 18px; height: 18px; padding: 0; accent-color: #16865a; cursor: pointer; }
   .top-actions { display: flex; align-items: center; gap: 4px; }
