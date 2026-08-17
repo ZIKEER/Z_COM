@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
@@ -205,6 +205,10 @@
   let autoSend = $state(false);
   let settingsOpen = $state(false);
   let aboutOpen = $state(false);
+  let customBaudrateOpen = $state(false);
+  let customBaudrateInput = $state("");
+  let customBaudrateError = $state("");
+  let customBaudrateField = $state<HTMLInputElement>();
   let sidebarOpen = $state(false);
   let receiveContextMenu = $state<PositionedMenu | null>(null);
   let editContextMenu = $state<EditContextMenu | null>(null);
@@ -242,18 +246,19 @@
   let updateError = $state("");
 
   const CONNECTION_TIMEOUT_MS = 12_000;
+  const DEFAULT_BAUDRATES = [
+    "110", "300", "600", "1200", "2400", "4800", "9600", "14400", "19200", "38400",
+    "56000", "57600", "115200", "128000", "230400", "256000", "460800", "500000",
+    "512000", "600000", "750000", "921600", "1000000", "1500000", "2000000", "3000000",
+    "4000000",
+  ];
 
   const serialDevices = $derived(devices.filter((device) => device.transport === "serial"));
   const probeDevices = $derived(devices.filter((device) => device.transport === "probe"));
   const probeChipOptions = $derived([
     ...new Set([...config.probe_chip_history, ...customProbeTargets]),
   ]);
-  const baudrateOptions = $derived([
-    ...new Set([
-      "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200",
-      "230400", "460800", "921600", "1000000", "2000000", ...config.baudrate_history,
-    ]),
-  ].sort((left, right) => Number(left) - Number(right)));
+  const customBaudrateOptions = $derived(normalizedBaudrateHistory(config.baudrate_history));
 
   onMount(() => {
     let unlistenTransport: UnlistenFn | undefined;
@@ -274,6 +279,8 @@
         } catch {
           config.baudrate = "115200";
         }
+        config.baudrate_history = normalizedBaudrateHistory(config.baudrate_history);
+        rememberBaudrate(config.baudrate);
         lastValidBaudrate = config.baudrate;
         draftConfig = structuredClone($state.snapshot(config));
         extended = data.extended;
@@ -414,12 +421,43 @@
     }
   }
 
-  async function updateBaudrate() {
+  async function selectBaudrate(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    if (select.value === "__custom__") {
+      select.value = config.baudrate;
+      customBaudrateInput = DEFAULT_BAUDRATES.includes(config.baudrate) ? "" : config.baudrate;
+      customBaudrateError = "";
+      customBaudrateOpen = true;
+      await tick();
+      customBaudrateField?.focus();
+      customBaudrateField?.select();
+      return;
+    }
+    await applyBaudrate(select.value);
+  }
+
+  async function confirmCustomBaudrate() {
+    let value: string;
+    try {
+      value = String(validatedBaudrate(customBaudrateInput));
+    } catch (error) {
+      customBaudrateError = stringifyError(error);
+      return;
+    }
+    if (await applyBaudrate(value)) customBaudrateOpen = false;
+  }
+
+  function closeCustomBaudrateDialog() {
+    customBaudrateOpen = false;
+    customBaudrateError = "";
+  }
+
+  async function applyBaudrate(value: string) {
     const previousConfig = structuredClone($state.snapshot(config));
     previousConfig.baudrate = lastValidBaudrate;
     let serialReconfigured = false;
     try {
-      config.baudrate = String(validatedBaudrate(config.baudrate));
+      config.baudrate = String(validatedBaudrate(value));
       rememberBaudrate(config.baudrate);
       if (connected && mode === "serial") {
         await invoke("reconfigure_serial", { settings: serialSettings(config) });
@@ -427,6 +465,7 @@
       }
       await invoke("save_config", { config });
       lastValidBaudrate = config.baudrate;
+      return true;
     } catch (error) {
       if (serialReconfigured) {
         try {
@@ -435,6 +474,7 @@
       }
       config = previousConfig;
       showError(error);
+      return false;
     }
   }
 
@@ -449,7 +489,19 @@
   }
 
   function rememberBaudrate(value: string) {
-    config.baudrate_history = [value, ...config.baudrate_history.filter((item) => item !== value)].slice(0, 12);
+    const history = normalizedBaudrateHistory(config.baudrate_history).filter((item) => item !== value);
+    config.baudrate_history = DEFAULT_BAUDRATES.includes(value) ? history : [value, ...history].slice(0, 12);
+  }
+
+  function normalizedBaudrateHistory(values: string[]) {
+    const result: string[] = [];
+    for (const value of values) {
+      try {
+        const normalized = String(validatedBaudrate(value));
+        if (!DEFAULT_BAUDRATES.includes(normalized) && !result.includes(normalized)) result.push(normalized);
+      } catch {}
+    }
+    return result.slice(0, 12);
   }
 
   function handleTransportEvent(event: TransportEvent) {
@@ -520,6 +572,10 @@
   function appendData(bytes: Uint8Array, direction: "received" | "sent") {
     const timestamp = currentTimestamp();
     const arrow = direction === "received" ? "←" : "→";
+    if (config.display_mode === "ASCII") {
+      appendAsciiData(bytes, direction, timestamp, arrow);
+      return;
+    }
     if (config.display_mode === "MIXED") {
       appendMixedData(bytes, timestamp, arrow);
       return;
@@ -657,7 +713,9 @@
   }
 
   function handleWindowKeyDown(event: KeyboardEvent) {
-    if (event.key === "Escape") closeContextMenus();
+    if (event.key !== "Escape") return;
+    closeContextMenus();
+    if (customBaudrateOpen) closeCustomBaudrateDialog();
   }
 
   async function writeClipboard(text: string) {
@@ -673,6 +731,34 @@
       document.execCommand("copy");
       textarea.remove();
     }
+  }
+
+  function appendAsciiData(
+    bytes: Uint8Array,
+    direction: "received" | "sent",
+    timestamp: string,
+    arrow: "←" | "→",
+  ) {
+    const lines = displayLines(displayAscii(bytes, true));
+    const newLines = lines.map((content, index) => renderAsciiLine(content, timestamp, arrow, index === 0));
+    receiveLines = [...receiveLines, ...newLines].slice(-5000);
+    if (config.auto_scroll) {
+      requestAnimationFrame(() => receiveView?.scrollTo({ top: receiveView.scrollHeight }));
+    }
+  }
+
+  function renderAsciiLine(content: string, timestamp: string, arrow: "←" | "→", showTimestamp: boolean): ReceiveLine {
+    const plainContent = stripAnsi(content);
+    const contentHtml = config.display_ansi ? ansiToHtml(content) : escapeHtml(plainContent);
+    const prefix = showTimestamp ? `[${timestamp}] ${arrow} ASCII: ` : " ".repeat(24);
+    const prefixHtml = showTimestamp
+      ? `<span class="display-timestamp">[${timestamp}]</span> <span class="display-arrow">${arrow}</span> <span class="display-label display-label-ascii">ASCII:</span> `
+      : `<span class="display-prefix-placeholder" aria-hidden="true">${" ".repeat(24)}</span>`;
+    return {
+      id: ++lineId,
+      text: `${prefix}${plainContent}`,
+      html: `${prefixHtml}<span class="display-data">${contentHtml}</span>`,
+    };
   }
 
   async function copyReceiveSelection() {
@@ -1306,8 +1392,11 @@
     <div class="connection-fields">
       {#if mode === "serial"}
         <label><span>设备</span><select bind:value={config.port} onchange={savePreferences} disabled={connected}>{#each serialDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
-        <label class="short"><span>波特率</span><input list="baudrate-options" inputmode="numeric" bind:value={config.baudrate} onchange={updateBaudrate} disabled={connecting} /></label>
-        <datalist id="baudrate-options">{#each baudrateOptions as baud}<option value={baud}></option>{/each}</datalist>
+        <label class="short"><span>波特率</span><select value={config.baudrate} onchange={selectBaudrate} disabled={connecting}>
+          <optgroup label="常用波特率">{#each DEFAULT_BAUDRATES as baud}<option value={baud}>{baud}</option>{/each}</optgroup>
+          {#if customBaudrateOptions.length}<optgroup label="自定义记录">{#each customBaudrateOptions as baud}<option value={baud}>{baud}</option>{/each}</optgroup>{/if}
+          <option value="__custom__">自定义…</option>
+        </select></label>
       {:else if mode === "socket"}
         <div class="mini-switch"><button class:active={socketProtocol === "TCP"} onclick={() => setSocketProtocol("TCP")}>TCP</button><button class:active={socketProtocol === "UDP"} onclick={() => setSocketProtocol("UDP")}>UDP</button></div>
         <div class="mini-switch"><button class:active={socketRole === "Client"} onclick={() => setSocketRole("Client")}>客户端</button><button class:active={socketRole === "Server"} onclick={() => setSocketRole("Server")}>服务端</button></div>
@@ -1318,7 +1407,7 @@
         <label class="probe-select"><span>调试探针</span><select bind:value={selectedProbe} onchange={persistSelectedProbe} disabled={connected}>{#each probeDevices as device}<option value={device.id}>{device.label}</option>{/each}</select></label>
         <label class="chip"><span>目标芯片</span><input list="chip-history" bind:value={config.probe_chip} onblur={savePreferences} placeholder="例如 nRF52840_xxAA" disabled={connected} /></label>
         <datalist id="chip-history">{#each probeChipOptions as chip}<option value={chip}></option>{/each}</datalist>
-        <label class="reset-check"><input type="checkbox" bind:checked={config.probe_reset} onchange={savePreferences} disabled={connected} />连接后复位</label>
+        <label class="reset-check"><input type="checkbox" bind:checked={config.probe_reset} onchange={savePreferences} />连接后复位</label>
       {/if}
     </div>
 
@@ -1413,6 +1502,23 @@
     <span class="toolbar-spacer"></span><span>实例 {instanceId}</span><span>发送 {sentCount.toLocaleString()} B</span><span>接收 {receivedCount.toLocaleString()} B</span><span>v{version}</span>
   </footer>
 </main>
+
+{#if customBaudrateOpen}
+  <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeCustomBaudrateDialog()}>
+    <div class="baudrate-dialog" role="dialog" aria-modal="true" aria-labelledby="baudrate-dialog-title">
+      <form onsubmit={(event) => { event.preventDefault(); void confirmCustomBaudrate(); }}>
+        <header><h2 id="baudrate-dialog-title">自定义波特率</h2><button type="button" class="icon-button" title="关闭" onclick={closeCustomBaudrateDialog}><X size={17} /></button></header>
+        <div class="baudrate-dialog-body">
+          <label for="custom-baudrate">请输入波特率</label>
+          <input id="custom-baudrate" bind:this={customBaudrateField} bind:value={customBaudrateInput} inputmode="numeric" autocomplete="off" placeholder="1 - 10000000" aria-describedby="custom-baudrate-hint" />
+          <p id="custom-baudrate-hint">自定义值会保存到配置文件，并显示在后续的波特率下拉列表中。</p>
+          {#if customBaudrateError}<p class="dialog-error">{customBaudrateError}</p>{/if}
+        </div>
+        <footer><button type="button" onclick={closeCustomBaudrateDialog}>取消</button><button type="submit" class="primary">确定</button></footer>
+      </form>
+    </div>
+  </div>
+{/if}
 
 {#if settingsOpen}
   <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && (settingsOpen = false)}>
@@ -1595,7 +1701,7 @@
   .connection-fields label > span { color: #404040; white-space: nowrap; }
   .connection-fields select, .connection-fields input { height: 30px; padding: 4px 7px; min-width: 130px; }
   .connection-fields label:first-child select { width: clamp(160px, 23vw, 300px); }
-  .connection-fields .short input { min-width: 90px; width: 104px; }
+  .connection-fields .short select { min-width: 118px; width: 128px; }
   .connection-fields .host input { width: 150px; }
   .connection-fields .port input { width: 82px; min-width: 0; }
   .connection-fields .probe-select select { width: clamp(190px, 27vw, 360px); }
@@ -1689,6 +1795,19 @@
   .status-dot.online { background: #26834b; }
   .status-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42vw; }
   .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 18px; background: rgba(26, 32, 36, .38); }
+  .baudrate-dialog { width: min(390px, 94vw); overflow: hidden; background: #f7f7f7; border: 1px solid #888; border-radius: 5px; box-shadow: 0 16px 42px rgba(20, 25, 29, .28); }
+  .baudrate-dialog form { margin: 0; }
+  .baudrate-dialog header { height: 42px; display: flex; align-items: center; padding: 0 8px 0 14px; background: #fff; border-bottom: 1px solid #c8cdd1; }
+  .baudrate-dialog h2 { margin: 0; font-size: 15px; }
+  .baudrate-dialog header button { margin-left: auto; }
+  .baudrate-dialog-body { padding: 15px 16px 12px; }
+  .baudrate-dialog-body label { display: block; margin-bottom: 6px; font-weight: 600; }
+  .baudrate-dialog-body input { width: 100%; height: 32px; padding: 4px 8px; font-family: "Cascadia Mono", Consolas, monospace; }
+  .baudrate-dialog-body p { margin: 7px 0 0; color: #657078; font-size: 12px; line-height: 1.45; }
+  .baudrate-dialog-body .dialog-error { color: #b42318; }
+  .baudrate-dialog footer { display: flex; justify-content: flex-end; gap: 7px; padding: 8px 12px; background: #fff; border-top: 1px solid #c8cdd1; }
+  .baudrate-dialog footer button { min-width: 72px; padding: 0 12px; }
+  .baudrate-dialog footer .primary { background: #16865a; color: #fff; border-color: #11764e; }
   .settings-dialog { width: min(680px, 96vw); max-height: 90vh; display: flex; flex-direction: column; background: #f5f5f5; border: 1px solid #777; box-shadow: 0 16px 45px rgba(20, 25, 29, .24); }
   .settings-dialog > header { height: 42px; display: flex; align-items: center; padding: 0 10px 0 14px; border-bottom: 1px solid #bdc5cb; }
   .settings-dialog h2 { margin: 0; font-size: 15px; }
