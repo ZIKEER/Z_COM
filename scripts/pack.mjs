@@ -6,6 +6,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const windowsOnly = process.argv.includes("--windows");
+
+if (windowsOnly && process.platform !== "win32") {
+  throw new Error("pack:win 只能在 Windows 环境执行");
+}
 const packageJson = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
 const tauriConfig = JSON.parse(await readFile(path.join(rootDir, "src-tauri", "tauri.conf.json"), "utf8"));
 const cargoToml = await readFile(path.join(rootDir, "src-tauri", "Cargo.toml"), "utf8");
@@ -53,7 +58,14 @@ if (build.status !== 0) {
 }
 
 await mkdir(outputDir, { recursive: true });
-await copyFile(sourceExecutable, outputExecutable);
+try {
+  await copyFile(sourceExecutable, outputExecutable);
+} catch (error) {
+  if (error?.code === "EBUSY" || error?.code === "EPERM") {
+    throw new Error(`无法覆盖 ${outputExecutable}：该程序正在运行，请关闭后重新执行打包命令`, { cause: error });
+  }
+  throw error;
+}
 if (process.platform !== "win32") {
   await chmod(outputExecutable, 0o755);
 }

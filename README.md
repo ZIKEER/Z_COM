@@ -31,11 +31,29 @@ npm run build
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-打包绿色版：
+统一修改版本号（自动同步 npm、Cargo、Tauri 及锁文件）：
 
 ```powershell
-npm run pack
+npm run version:set -- 0.1.8
 ```
+
+三种构建方式：
+
+```powershell
+# 1. 原始构建，仅输出到 src-tauri/target/release/
+npm run build:raw
+
+# 2. Windows 日常开发包，输出到 dist/Z_COM_V版本号/Z_COM.exe
+npm run pack:win
+
+# 3. 当前平台发布包，直接归集到 dist/release/v版本号/
+npm run pack:release
+```
+
+Release 必须分别在 Windows x86_64 和 Linux x86_64 的同一工作区执行一次
+`npm run pack:release`。第二个平台完成后脚本自动生成包含两个平台大小和 SHA-256 的
+`release-manifest.json`，整个过程不需要手动复制文件。详细说明见
+[开发、检查与打包](docs/development.md)。
 
 ## 文档
 

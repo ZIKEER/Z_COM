@@ -9,8 +9,11 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "version:set": "node scripts/set-version.mjs",
+    "build:raw": "tauri build --no-bundle",
     "pack": "node scripts/pack.mjs",
-    "release:stage": "node scripts/stage-release.mjs",
+    "pack:win": "node scripts/pack.mjs --windows",
+    "pack:release": "node scripts/pack-release.mjs",
     "tauri": "tauri"
   },
   "license": "Apache-2.0",
