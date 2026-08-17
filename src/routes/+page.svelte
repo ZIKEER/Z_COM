@@ -137,6 +137,22 @@
     html: string;
   }
 
+  interface PositionedMenu {
+    x: number;
+    y: number;
+  }
+
+  interface EditContextMenu extends PositionedMenu {
+    target: HTMLInputElement | HTMLTextAreaElement;
+    selectionStart: number;
+    selectionEnd: number;
+    selectedText: string;
+  }
+
+  interface SelectionContextMenu extends PositionedMenu {
+    text: string;
+  }
+
   const defaultConfig: AppConfig = {
     transport_mode: "serial",
     port: "",
@@ -190,7 +206,9 @@
   let settingsOpen = $state(false);
   let aboutOpen = $state(false);
   let sidebarOpen = $state(false);
-  let receiveContextMenu = $state<{ x: number; y: number } | null>(null);
+  let receiveContextMenu = $state<PositionedMenu | null>(null);
+  let editContextMenu = $state<EditContextMenu | null>(null);
+  let selectionContextMenu = $state<SelectionContextMenu | null>(null);
   let receiveContextSelection = $state("");
   let receiveLines = $state<ReceiveLine[]>([]);
   let receiveHtml = $derived(receiveLines.map((line) => line.html).join("\n"));
@@ -588,19 +606,61 @@
 
   function showReceiveContextMenu(event: MouseEvent) {
     event.preventDefault();
+    event.stopPropagation();
+    closeContextMenus();
     receiveContextSelection = window.getSelection()?.toString() ?? "";
-    const menuWidth = 190;
-    const menuHeight = 182;
-    receiveContextMenu = {
-      x: Math.min(event.clientX, window.innerWidth - menuWidth - 6),
-      y: Math.min(event.clientY, window.innerHeight - menuHeight - 6),
+    receiveContextMenu = menuPosition(event, 210, 182);
+  }
+
+  function showPageContextMenu(event: MouseEvent) {
+    if (event.defaultPrevented) return;
+    event.preventDefault();
+    closeContextMenus();
+
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      if (!isEditableTextControl(target)) return;
+      target.focus();
+      const selectionStart = target.selectionStart ?? 0;
+      const selectionEnd = target.selectionEnd ?? selectionStart;
+      editContextMenu = {
+        ...menuPosition(event, 190, 154),
+        target,
+        selectionStart,
+        selectionEnd,
+        selectedText: target.value.slice(selectionStart, selectionEnd),
+      };
+      return;
+    }
+
+    const text = window.getSelection()?.toString() ?? "";
+    if (text) selectionContextMenu = { ...menuPosition(event, 120, 38), text };
+  }
+
+  function menuPosition(event: MouseEvent, width: number, height: number): PositionedMenu {
+    return {
+      x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
+      y: Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6)),
     };
   }
 
-  async function copyReceiveSelection() {
-    const text = receiveContextSelection;
+  function isEditableTextControl(target: HTMLInputElement | HTMLTextAreaElement) {
+    if (target.disabled) return false;
+    if (target instanceof HTMLTextAreaElement) return true;
+    return ["text", "search", "tel", "url", "email", "password"].includes(target.type);
+  }
+
+  function closeContextMenus() {
     receiveContextMenu = null;
-    if (!text) return;
+    editContextMenu = null;
+    selectionContextMenu = null;
+  }
+
+  function handleWindowKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") closeContextMenus();
+  }
+
+  async function writeClipboard(text: string) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -615,8 +675,15 @@
     }
   }
 
+  async function copyReceiveSelection() {
+    const text = receiveContextSelection;
+    closeContextMenus();
+    if (!text) return;
+    await writeClipboard(text);
+  }
+
   function selectAllReceive() {
-    receiveContextMenu = null;
+    closeContextMenus();
     const selection = window.getSelection();
     if (!selection || !receiveView) return;
     const range = document.createRange();
@@ -626,14 +693,59 @@
   }
 
   function clearReceiveFromContextMenu() {
-    receiveContextMenu = null;
+    closeContextMenus();
     clearReceive();
   }
 
   async function toggleAnsiFromContextMenu() {
-    receiveContextMenu = null;
+    closeContextMenus();
     config.display_ansi = !config.display_ansi;
     await savePreferences();
+  }
+
+  async function cutEditSelection() {
+    const context = editContextMenu;
+    closeContextMenus();
+    if (!context?.selectedText || context.target.readOnly) return;
+    await writeClipboard(context.selectedText);
+    replaceEditSelection(context, "");
+  }
+
+  async function copyEditSelection() {
+    const text = editContextMenu?.selectedText ?? "";
+    closeContextMenus();
+    if (text) await writeClipboard(text);
+  }
+
+  async function pasteIntoEditControl() {
+    const context = editContextMenu;
+    closeContextMenus();
+    if (!context || context.target.readOnly) return;
+    try {
+      replaceEditSelection(context, await navigator.clipboard.readText());
+    } catch {
+      errorText = "无法读取剪贴板，请检查系统剪贴板权限";
+    }
+  }
+
+  function replaceEditSelection(context: EditContextMenu, replacement: string) {
+    const { target, selectionStart, selectionEnd } = context;
+    target.focus();
+    target.setRangeText(replacement, selectionStart, selectionEnd, "end");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function selectAllEditControl() {
+    const target = editContextMenu?.target;
+    closeContextMenus();
+    target?.focus();
+    target?.select();
+  }
+
+  async function copyPageSelection() {
+    const text = selectionContextMenu?.text ?? "";
+    closeContextMenus();
+    if (text) await writeClipboard(text);
   }
 
   async function sendCurrent(source: "manual" | "auto" = "manual") {
@@ -1179,6 +1291,7 @@
 </script>
 
 <svelte:head><title>{instanceId > 1 ? `Z_COM - 实例 ${instanceId}` : "Z_COM"}</title></svelte:head>
+<svelte:window oncontextmenu={showPageContextMenu} onkeydown={handleWindowKeyDown} />
 
 <main class="app-shell" class:resizing style={`--send-panel-height:calc(${config.send_panel_ratio * 100}vh - ${config.send_panel_ratio * 69}px);--extended-panel-width:${config.extended_panel_ratio * 100}%`}>
   <header class="connection-bar">
@@ -1437,13 +1550,31 @@
 {/if}
 
 {#if receiveContextMenu}
-  <button class="context-menu-shield" aria-label="关闭右键菜单" onclick={() => receiveContextMenu = null} oncontextmenu={(event) => { event.preventDefault(); receiveContextMenu = null; }}></button>
-  <div class="receive-context-menu" style={`left:${receiveContextMenu.x}px;top:${receiveContextMenu.y}px`} role="menu" tabindex="-1" oncontextmenu={(event) => event.preventDefault()}>
+  <button class="context-menu-shield" aria-label="关闭右键菜单" onclick={closeContextMenus} oncontextmenu={(event) => { event.preventDefault(); closeContextMenus(); }}></button>
+  <div class="context-menu" style={`left:${receiveContextMenu.x}px;top:${receiveContextMenu.y}px`} role="menu" tabindex="-1" oncontextmenu={(event) => event.preventDefault()}>
     <button role="menuitem" disabled={!receiveContextSelection} onclick={copyReceiveSelection}><span>复制</span><kbd>Ctrl+C</kbd></button>
     <button role="menuitem" disabled={!receiveLines.length} onclick={selectAllReceive}><span>全选</span><kbd>Ctrl+A</kbd></button>
     <div class="context-separator"></div>
     <button role="menuitem" disabled={!receiveLines.length} onclick={clearReceiveFromContextMenu}><span>清空报文并重置计数</span></button>
     <button role="menuitemcheckbox" aria-checked={config.display_ansi} onclick={toggleAnsiFromContextMenu}><span><i>{config.display_ansi ? "✓" : ""}</i>ANSI 颜色显示</span></button>
+  </div>
+{/if}
+
+{#if editContextMenu}
+  <button class="context-menu-shield" aria-label="关闭右键菜单" onclick={closeContextMenus} oncontextmenu={(event) => { event.preventDefault(); closeContextMenus(); }}></button>
+  <div class="context-menu edit-context-menu" style={`left:${editContextMenu.x}px;top:${editContextMenu.y}px`} role="menu" tabindex="-1" oncontextmenu={(event) => event.preventDefault()}>
+    <button role="menuitem" disabled={!editContextMenu.selectedText || editContextMenu.target.readOnly} onclick={cutEditSelection}><span>剪切</span><kbd>Ctrl+X</kbd></button>
+    <button role="menuitem" disabled={!editContextMenu.selectedText} onclick={copyEditSelection}><span>复制</span><kbd>Ctrl+C</kbd></button>
+    <button role="menuitem" disabled={editContextMenu.target.readOnly} onclick={pasteIntoEditControl}><span>粘贴</span><kbd>Ctrl+V</kbd></button>
+    <div class="context-separator"></div>
+    <button role="menuitem" disabled={!editContextMenu.target.value} onclick={selectAllEditControl}><span>全选</span><kbd>Ctrl+A</kbd></button>
+  </div>
+{/if}
+
+{#if selectionContextMenu}
+  <button class="context-menu-shield" aria-label="关闭右键菜单" onclick={closeContextMenus} oncontextmenu={(event) => { event.preventDefault(); closeContextMenus(); }}></button>
+  <div class="context-menu selection-context-menu" style={`left:${selectionContextMenu.x}px;top:${selectionContextMenu.y}px`} role="menu" tabindex="-1" oncontextmenu={(event) => event.preventDefault()}>
+    <button role="menuitem" onclick={copyPageSelection}><span>复制</span><kbd>Ctrl+C</kbd></button>
   </div>
 {/if}
 
@@ -1521,12 +1652,14 @@
   :global(.display-event-peer) { color: #6f42c1; }
   .context-menu-shield { position: fixed; inset: 0; z-index: 20; width: auto; height: auto; min-height: 0; padding: 0; border: 0; background: transparent; cursor: default; }
   .context-menu-shield:hover:not(:disabled) { border: 0; background: transparent; }
-  .receive-context-menu { position: fixed; z-index: 21; width: 190px; padding: 4px; color: #202020; background: #fff; border: 1px solid #a8a8a8; border-radius: 3px; box-shadow: 0 5px 18px rgba(0, 0, 0, .22); }
-  .receive-context-menu button { width: 100%; min-height: 29px; padding: 0 9px; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; text-align: left; }
-  .receive-context-menu button:hover:not(:disabled) { background: #e5f1fb; border-color: transparent; }
-  .receive-context-menu button:disabled { opacity: .45; }
-  .receive-context-menu kbd { color: #707070; font: 12px "Segoe UI", sans-serif; }
-  .receive-context-menu i { display: inline-block; width: 18px; font-style: normal; }
+  .context-menu { position: fixed; z-index: 21; width: 210px; padding: 4px; color: #202020; background: #fff; border: 1px solid #a8a8a8; border-radius: 3px; box-shadow: 0 5px 18px rgba(0, 0, 0, .22); }
+  .context-menu button { width: 100%; min-height: 29px; padding: 0 9px; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; text-align: left; }
+  .context-menu button:hover:not(:disabled) { background: #e5f1fb; border-color: transparent; }
+  .context-menu button:disabled { opacity: .45; }
+  .context-menu kbd { color: #707070; font: 12px "Segoe UI", sans-serif; }
+  .context-menu i { display: inline-block; width: 18px; font-style: normal; }
+  .edit-context-menu { width: 190px; }
+  .selection-context-menu { width: 120px; }
   .context-separator { height: 1px; margin: 4px 5px; background: #dedede; }
   .extended-table-wrap { flex: 1; min-height: 0; overflow: auto; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
