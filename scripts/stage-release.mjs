@@ -23,7 +23,6 @@ if (versions.size !== 1) {
 const version = packageJson.version;
 const portableDirectory = `Z_COM_V${version}`;
 const releaseDirectory = path.join(rootDir, "dist", "release", `v${version}`);
-const legalFiles = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"];
 const assets = [
   {
     platform: "windows-x86_64",
@@ -51,9 +50,6 @@ for (const asset of assets) {
 
 await rm(releaseDirectory, { recursive: true, force: true });
 await mkdir(releaseDirectory, { recursive: true });
-for (const legalFile of legalFiles) {
-  await copyFile(path.join(rootDir, legalFile), path.join(releaseDirectory, legalFile));
-}
 
 const manifest = { version, assets: {} };
 for (const asset of assets) {

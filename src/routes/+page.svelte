@@ -4,6 +4,9 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import licenseText from "../../LICENSE?raw";
+  import noticeText from "../../NOTICE?raw";
+  import thirdPartyNoticesText from "../../THIRD_PARTY_NOTICES.md?raw";
   import {
     ArrowDown,
     ArrowUp,
@@ -35,6 +38,11 @@
   const repositories = [
     { name: "GitHub", url: "https://github.com/ZIKEER/Z_COM" },
     { name: "Gitee", url: "https://gitee.com/zzk11111111/Z_COM" },
+  ];
+  const legalDocuments = [
+    { name: "LICENSE", title: "Apache-2.0 许可证", body: licenseText },
+    { name: "NOTICE", title: "项目声明", body: noticeText },
+    { name: "THIRD_PARTY_NOTICES", title: "第三方声明", body: thirdPartyNoticesText },
   ];
 
   interface AppConfig {
@@ -208,6 +216,7 @@
   let connecting = $state(false);
   let statusText = $state("未连接");
   let errorText = $state("");
+  let legalDocument = $state<(typeof legalDocuments)[number] | null>(null);
   let sendText = $state("");
   let appendCrLf = $state(false);
   let autoSend = $state(false);
@@ -1649,6 +1658,7 @@
               {#each repositories as repository}
                 <a href={repository.url} target="_blank" rel="noreferrer" onclick={(event) => openRepository(event, repository.url)}>{repository.name}</a>
               {/each}
+              <button class="about-legal-link" onclick={() => legalDocument = legalDocuments[0]}>开源许可</button>
             </div>
           </div>
         </section>
@@ -1720,6 +1730,23 @@
         {/if}
         <button onclick={() => aboutOpen = false} disabled={updateInstalling}>关闭</button>
       </footer>
+    </div>
+  </div>
+{/if}
+
+{#if legalDocument}
+  <div class="modal-backdrop legal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && (legalDocument = null)}>
+    <div class="legal-dialog" role="dialog" aria-modal="true" aria-labelledby="legal-title">
+      <header>
+        <h2 id="legal-title">{legalDocument.title}</h2>
+        <button class="icon-button subtle" title="关闭" onclick={() => legalDocument = null}><X size={17} /></button>
+      </header>
+      <nav class="legal-tabs" aria-label="开源许可文件">
+        {#each legalDocuments as document}
+          <button class:active={legalDocument.name === document.name} onclick={() => legalDocument = document}>{document.name === "THIRD_PARTY_NOTICES" ? "第三方声明" : document.name}</button>
+        {/each}
+      </nav>
+      <pre class="legal-content">{legalDocument.body}</pre>
     </div>
   </div>
 {/if}
@@ -1932,6 +1959,8 @@
   .about-repositories { display: flex; align-items: center; gap: 9px; margin-top: 9px; color: #718078; font-size: 12px; }
   .about-repositories a { color: #176b48; font-weight: 600; text-decoration: none; }
   .about-repositories a:hover { text-decoration: underline; }
+  .about-legal-link { min-height: 0; padding: 0; color: #176b48; background: transparent; border: 0; font-size: 12px; font-weight: 600; }
+  .about-legal-link:hover:not(:disabled) { color: #0f4f35; text-decoration: underline; }
   .about-capabilities { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .about-capabilities > div { display: grid; gap: 2px; padding: 9px 11px; background: #fff; border: 1px solid #dce4df; border-radius: 6px; }
   .about-capabilities strong { color: #294b3c; font-size: 12px; }
@@ -1968,6 +1997,15 @@
   .about-dialog > footer span { margin-right: auto; color: #829087; font-size: 11px; }
   .about-dialog > footer button { min-width: 82px; padding: 0 14px; }
   .about-dialog > footer .primary { background: #16865a; color: #fff; border-color: #11764e; }
+  .legal-backdrop { z-index: 11; }
+  .legal-dialog { display: grid; grid-template-rows: 44px auto minmax(0, 1fr); width: min(820px, 94vw); height: min(720px, 84vh); overflow: hidden; background: #f8faf9; border: 1px solid #8f9a94; border-radius: 10px; box-shadow: 0 20px 55px rgba(20, 35, 28, .28); }
+  .legal-dialog > header { display: flex; align-items: center; padding: 0 9px 0 18px; background: #fff; border-bottom: 1px solid #dce4df; }
+  .legal-dialog > header h2 { margin: 0; font-size: 15px; }
+  .legal-dialog > header button { margin-left: auto; }
+  .legal-tabs { display: flex; gap: 4px; padding: 8px 12px; background: #eef5f1; border-bottom: 1px solid #d2e2d9; }
+  .legal-tabs button { min-height: 28px; padding: 0 10px; color: #52635b; background: #fff; border: 1px solid #cbd9d1; border-radius: 4px; font-size: 12px; }
+  .legal-tabs button.active { color: #fff; background: #176b48; border-color: #176b48; }
+  .legal-content { min-height: 0; margin: 0; overflow: auto; padding: 16px; color: #35443d; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 "Cascadia Mono", Consolas, monospace; }
 
   @media (max-width: 900px) {
     .connection-bar { flex-wrap: wrap; height: auto; }
