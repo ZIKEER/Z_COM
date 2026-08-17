@@ -34,6 +34,7 @@ const distRoot = process.platform === "win32"
   : path.join(rootDir, "dist", `${platformName}-${architecture}`);
 const outputDir = path.join(distRoot, appName);
 const outputExecutable = path.join(outputDir, `Z_COM${executableExtension}`);
+const legalFiles = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"];
 
 console.log(`\nZ_COM Rust 便携版打包`);
 console.log(`版本：${versionName}`);
@@ -54,6 +55,9 @@ if (build.status !== 0) {
 
 await mkdir(outputDir, { recursive: true });
 await copyFile(sourceExecutable, outputExecutable);
+for (const legalFile of legalFiles) {
+  await copyFile(path.join(rootDir, legalFile), path.join(outputDir, legalFile));
+}
 if (process.platform !== "win32") {
   await chmod(outputExecutable, 0o755);
 }

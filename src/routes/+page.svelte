@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     ArrowDown,
     ArrowUp,
@@ -29,6 +30,11 @@
   type TransportMode = "serial" | "socket" | "probe";
   type DisplayMode = "HEX" | "ASCII" | "MIXED";
   type SendMode = "HEX" | "ASCII";
+
+  const repositories = [
+    { name: "GitHub", url: "https://github.com/ZIKEER/Z_COM" },
+    { name: "Gitee", url: "https://gitee.com/zzk11111111/Z_COM" },
+  ];
 
   interface AppConfig {
     transport_mode: TransportMode;
@@ -1273,6 +1279,15 @@
     errorText = stringifyError(error);
   }
 
+  async function openRepository(event: MouseEvent, url: string) {
+    event.preventDefault();
+    try {
+      await openUrl(url);
+    } catch (error) {
+      errorText = `无法打开代码仓库: ${stringifyError(error)}`;
+    }
+  }
+
   function stringifyError(error: unknown) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -1581,6 +1596,12 @@
             <div class="about-name"><strong>Z_COM</strong><span>v{version}</span></div>
             <p>便携式跨平台通信与 RTT 调试终端</p>
             <div class="about-badges"><span>绿色免安装</span><span>Windows / Linux</span><span>实例 {instanceId}</span></div>
+            <div class="about-repositories">
+              <span>代码仓库</span>
+              {#each repositories as repository}
+                <a href={repository.url} target="_blank" rel="noreferrer" onclick={(event) => openRepository(event, repository.url)}>{repository.name}</a>
+              {/each}
+            </div>
           </div>
         </section>
         <section class="about-capabilities" aria-label="主要能力">
@@ -1640,7 +1661,7 @@
         </section>
       </div>
       <footer>
-        <span>更新由用户确认，不会静默安装</span>
+        <span>Copyright 2026 ZIKEER · Apache-2.0 · 更新由用户确认，不会静默安装</span>
         <button onclick={checkForUpdates} disabled={updateChecking || updateDownloading || updateInstalling}>{updateChecking ? "检查中..." : "检查更新"}</button>
         {#if updateDownloading}
           <button onclick={cancelUpdateDownload}>取消下载</button>
@@ -1848,6 +1869,9 @@
   .about-hero p { margin: 4px 0 9px; color: #52635b; font-size: 13px; }
   .about-badges { display: flex; flex-wrap: wrap; gap: 6px; }
   .about-badges span { padding: 3px 7px; color: #52635b; background: #fff; border: 1px solid #d6dfda; border-radius: 4px; font-size: 11px; }
+  .about-repositories { display: flex; align-items: center; gap: 9px; margin-top: 9px; color: #718078; font-size: 12px; }
+  .about-repositories a { color: #176b48; font-weight: 600; text-decoration: none; }
+  .about-repositories a:hover { text-decoration: underline; }
   .about-capabilities { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .about-capabilities > div { display: grid; gap: 2px; padding: 9px 11px; background: #fff; border: 1px solid #dce4df; border-radius: 6px; }
   .about-capabilities strong { color: #294b3c; font-size: 12px; }

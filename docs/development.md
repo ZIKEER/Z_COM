@@ -61,6 +61,9 @@ Windows 输出：
 dist/
 └── Z_COM_V版本号/
     ├── Z_COM.exe
+    ├── LICENSE
+    ├── NOTICE
+    ├── THIRD_PARTY_NOTICES.md
     ├── config/
     ├── logs/
     └── locks/
@@ -73,6 +76,9 @@ dist/
 └── linux-x86_64/
     └── Z_COM_V版本号/
         ├── Z_COM
+        ├── LICENSE
+        ├── NOTICE
+        ├── THIRD_PARTY_NOTICES.md
         ├── config/
         ├── logs/
         └── locks/
@@ -94,6 +100,9 @@ npm run release:stage
 dist/release/v版本号/
 ├── Z_COM-windows-x86_64.exe
 ├── Z_COM-linux-x86_64
+├── LICENSE
+├── NOTICE
+├── THIRD_PARTY_NOTICES.md
 └── release-manifest.json
 ```
 

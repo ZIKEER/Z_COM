@@ -48,3 +48,9 @@ npm run pack
 - [功能状态与开发路线图](docs/roadmap.md)
 
 当前版本：`0.1.7`。正式功能状态、验收范围和暂不支持项以[路线图](docs/roadmap.md)为准。
+
+## 许可证
+
+Z_COM 自有代码由 ZIKEER 以 [Apache License 2.0](LICENSE) 授权。
+第三方组件继续适用各自的许可证，详情见 [NOTICE](NOTICE) 和
+[第三方声明](THIRD_PARTY_NOTICES.md)。
