@@ -120,10 +120,7 @@ impl JLinkLibrary {
                         EmuSelectByUsbSerial
                     ),
                     open_ex: symbol!("JLINKARM_OpenEx", OpenEx),
-                    set_error_out_handler: symbol!(
-                        "JLINKARM_SetErrorOutHandler",
-                        SetOutHandler
-                    ),
+                    set_error_out_handler: symbol!("JLINKARM_SetErrorOutHandler", SetOutHandler),
                     set_warn_out_handler: symbol!("JLINKARM_SetWarnOutHandler", SetOutHandler),
                     close: symbol!("JLINKARM_Close", Close),
                     tif_select: symbol!("JLINKARM_TIF_Select", TifSelect),
@@ -295,7 +292,7 @@ impl JLinkSession {
         }
     }
 
-    fn recover_rtt(&mut self) {
+    fn recover_rtt(&mut self) -> Result<(), String> {
         unsafe {
             if self.rtt_started {
                 (self.api.rtt_control)(RTT_STOP, ptr::null_mut());
@@ -303,7 +300,7 @@ impl JLinkSession {
         }
         self.rtt_started = false;
         thread::sleep(Duration::from_millis(100));
-        let _ = self.start_rtt();
+        self.start_rtt()
     }
 
     fn reopen(&mut self) -> Result<(), String> {
@@ -460,14 +457,32 @@ pub(crate) fn run_rtt(
     let mut frame = FrameBuffer::new(request.frame_timeout);
     let mut read_buffer = [0_u8; READ_BUFFER_SIZE];
     let mut next_recovery_notice = Instant::now();
-    let mut consecutive_errors = 0_u32;
+    let mut consecutive_read_errors = 0_u32;
+    let mut consecutive_write_errors = 0_u32;
     loop {
         match commands.try_recv() {
             Ok(WorkerCommand::Write(bytes)) => match write_all(&session, &bytes) {
-                Ok(()) => emit(app, "data", "sent", bytes, ""),
+                Ok(()) => {
+                    consecutive_write_errors = 0;
+                    emit(app, "data", "sent", bytes, "");
+                }
                 Err(error) => {
-                    emit(app, "warning", "system", Vec::new(), error);
-                    session.recover_rtt();
+                    consecutive_write_errors += 1;
+                    let recovery = session
+                        .recover_rtt()
+                        .err()
+                        .map(|recovery_error| format!("；恢复失败: {recovery_error}"))
+                        .unwrap_or_default();
+                    emit(
+                        app,
+                        "warning",
+                        "system",
+                        Vec::new(),
+                        format!("{error}{recovery}"),
+                    );
+                    if consecutive_write_errors >= 5 {
+                        return Err("J-Link RTT 连接已断开，连续写入失败过多".to_string());
+                    }
                 }
             },
             Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
@@ -478,15 +493,15 @@ pub(crate) fn run_rtt(
         }
         match session.read(&mut read_buffer) {
             Ok(size) if size > 0 => {
-                consecutive_errors = 0;
+                consecutive_read_errors = 0;
                 frame.push(&read_buffer[..size]);
             }
             Ok(_) => {
-                consecutive_errors = 0;
+                consecutive_read_errors = 0;
                 thread::sleep(Duration::from_millis(2));
             }
             Err(error) => {
-                consecutive_errors += 1;
+                consecutive_read_errors += 1;
                 if Instant::now() >= next_recovery_notice {
                     emit(
                         app,
@@ -497,12 +512,19 @@ pub(crate) fn run_rtt(
                     );
                     next_recovery_notice = Instant::now() + Duration::from_secs(2);
                 }
-                if consecutive_errors >= 10 {
-                    if session.reopen().is_ok() {
-                        consecutive_errors = 0;
-                    }
-                } else {
-                    session.recover_rtt();
+                if consecutive_read_errors >= 10 {
+                    session
+                        .reopen()
+                        .map_err(|reopen_error| format!("J-Link RTT 重连失败: {reopen_error}"))?;
+                    consecutive_read_errors = 0;
+                } else if let Err(recovery_error) = session.recover_rtt() {
+                    emit(
+                        app,
+                        "warning",
+                        "system",
+                        Vec::new(),
+                        format!("J-Link RTT 恢复失败: {recovery_error}"),
+                    );
                 }
             }
         }

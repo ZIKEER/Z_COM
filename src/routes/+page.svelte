@@ -1816,7 +1816,7 @@
   .chip-combobox-menu > span { display: block; padding: 7px 8px; color: #777; white-space: nowrap; }
   .connection-fields .reset-check { min-height: 30px; padding: 0 5px; white-space: nowrap; cursor: pointer; }
   .connection-fields .reset-check input { width: 18px; min-width: 18px; height: 18px; padding: 0; accent-color: #16865a; cursor: pointer; }
-  .top-actions { display: flex; align-items: center; gap: 4px; }
+  .top-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
   button { border: 1px solid #adadad; background: #f5f5f5; border-radius: 2px; min-height: 28px; cursor: pointer; }
   button:hover:not(:disabled) { background: #e5f1fb; border-color: #0078d4; }
   button:disabled { opacity: .48; cursor: default; }
@@ -2007,9 +2007,9 @@
   .legal-tabs button.active { color: #fff; background: #176b48; border-color: #176b48; }
   .legal-content { min-height: 0; margin: 0; overflow: auto; padding: 16px; color: #35443d; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 "Cascadia Mono", Consolas, monospace; }
 
-  @media (max-width: 900px) {
+  @media (max-width: 1100px) {
     .connection-bar { flex-wrap: wrap; height: auto; }
-    .app-shell { grid-template-rows: auto auto minmax(0, 1fr) 132px 25px; }
+    .app-shell { grid-template-rows: auto auto minmax(0, 1fr) 5px 132px 25px; }
     .connection-fields { order: 3; flex-basis: 100%; }
     .top-actions { margin-left: auto; }
     .workspace.with-sidebar { grid-template-columns: minmax(280px, 1fr) minmax(300px, .85fr); }

@@ -1,5 +1,6 @@
 mod logger;
 mod models;
+mod panic_hook;
 mod segger;
 mod storage;
 mod transport;
@@ -573,6 +574,10 @@ fn ensure_no_other_instances(state: &AppState) -> Result<(), String> {
 
 pub fn run_update_mode() -> Option<Result<(), String>> {
     update_apply::run_update_mode()
+}
+
+pub fn install_panic_hook() {
+    panic_hook::init();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

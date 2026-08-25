@@ -45,21 +45,44 @@ impl TransportManager {
         self.disconnect();
         let is_serial = request.transport == "serial";
         let (commands, receiver) = mpsc::channel();
-        let handle = thread::spawn(move || {
-            let result = match request.transport.as_str() {
-                "serial" => run_serial(&app, &request, &receiver),
-                "socket" => run_socket(&app, &request, &receiver),
-                "probe" if request.device_id.starts_with("segger:") => {
-                    crate::segger::run_rtt(&app, &request, &receiver)
+        let spawn_error_app = app.clone();
+        let handle = thread::Builder::new()
+            .name(format!("transport-{}", request.transport))
+            .spawn(move || {
+                let result = match request.transport.as_str() {
+                    "serial" => run_serial(&app, &request, &receiver),
+                    "socket" => run_socket(&app, &request, &receiver),
+                    "probe" if request.device_id.starts_with("segger:") => {
+                        crate::segger::run_rtt(&app, &request, &receiver)
+                    }
+                    "probe" => run_probe_rtt(&app, &request, &receiver),
+                    other => Err(format!("不支持的传输类型: {other}")),
+                };
+                if let Err(message) = result {
+                    emit(&app, "error", "system", Vec::new(), message);
                 }
-                "probe" => run_probe_rtt(&app, &request, &receiver),
-                other => Err(format!("不支持的传输类型: {other}")),
-            };
-            if let Err(message) = result {
-                emit(&app, "error", "system", Vec::new(), message);
+                emit(&app, "disconnected", "system", Vec::new(), "连接已关闭");
+            });
+        let handle = match handle {
+            Ok(handle) => handle,
+            Err(error) => {
+                emit(
+                    &spawn_error_app,
+                    "error",
+                    "system",
+                    Vec::new(),
+                    format!("无法创建连接线程: {error}"),
+                );
+                emit(
+                    &spawn_error_app,
+                    "disconnected",
+                    "system",
+                    Vec::new(),
+                    "连接已关闭",
+                );
+                return;
             }
-            emit(&app, "disconnected", "system", Vec::new(), "连接已关闭");
-        });
+        };
         self.worker = Some(Worker {
             commands,
             handle,
@@ -619,31 +642,59 @@ fn run_probe_rtt(
 
     let mut frame = FrameBuffer::new(request.frame_timeout);
     let mut read_buffer = [0_u8; READ_BUFFER_SIZE];
+    let mut consecutive_read_errors = 0_u32;
+    let mut consecutive_write_errors = 0_u32;
+    let mut next_read_error_notice = Instant::now();
     loop {
         match commands.try_recv() {
-            Ok(WorkerCommand::Write(bytes)) => {
-                write_rtt(&mut session, &mut rtt, &bytes)?;
-                emit(app, "data", "sent", bytes, "");
-            }
+            Ok(WorkerCommand::Write(bytes)) => match write_rtt(&mut session, &mut rtt, &bytes) {
+                Ok(()) => {
+                    consecutive_write_errors = 0;
+                    emit(app, "data", "sent", bytes, "");
+                }
+                Err(error) => {
+                    emit(app, "warning", "system", Vec::new(), error);
+                    consecutive_write_errors += 1;
+                    if consecutive_write_errors >= 5 {
+                        return Err("RTT 连接已断开，连续写入失败过多".to_string());
+                    }
+                }
+            },
             Ok(WorkerCommand::ReconfigureSerial(_, response)) => {
                 let _ = response.send(Err("当前活动连接不是串口".into()));
             }
             Ok(WorkerCommand::Stop) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
         }
-        let size = {
+        let read_result = (|| {
             let mut core = session
                 .core(0)
                 .map_err(|error| format!("访问目标内核失败: {error}"))?;
             rtt.up_channel(0)
-                .ok_or("RTT 上行通道 0 已失效")?
+                .ok_or("RTT 上行通道 0 已失效".to_string())?
                 .read(&mut core, &mut read_buffer)
-                .map_err(|error| format!("RTT 读取失败: {error}"))?
-        };
-        if size > 0 {
-            frame.push(&read_buffer[..size]);
-        } else {
-            thread::sleep(Duration::from_millis(2));
+                .map_err(|error| format!("RTT 读取失败: {error}"))
+        })();
+        match read_result {
+            Ok(size) => {
+                consecutive_read_errors = 0;
+                if size > 0 {
+                    frame.push(&read_buffer[..size]);
+                } else {
+                    thread::sleep(Duration::from_millis(2));
+                }
+            }
+            Err(error) => {
+                consecutive_read_errors += 1;
+                if Instant::now() >= next_read_error_notice {
+                    emit(app, "warning", "system", Vec::new(), error);
+                    next_read_error_notice = Instant::now() + Duration::from_secs(2);
+                }
+                if consecutive_read_errors >= 10 {
+                    return Err("RTT 连接已断开，连续读取失败过多".to_string());
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
         }
         if frame.should_flush() {
             frame.flush(app);
