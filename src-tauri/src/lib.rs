@@ -423,8 +423,7 @@ fn connect_transport(
         .transport
         .lock()
         .map_err(lock_error)?
-        .connect(app, request);
-    Ok(())
+        .connect(app, request)
 }
 
 #[tauri::command]

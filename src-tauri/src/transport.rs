@@ -3,7 +3,11 @@ use std::{
     io::{self, Read, Write},
     net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender, TryRecvError},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender, TryRecvError},
+    },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -33,19 +37,46 @@ struct Worker {
     commands: Sender<WorkerCommand>,
     handle: JoinHandle<()>,
     is_serial: bool,
+    app: AppHandle,
+    stopped: Arc<AtomicBool>,
 }
 
-#[derive(Default)]
 pub struct TransportManager {
     worker: Option<Worker>,
+    cleanup_in_progress: Arc<AtomicBool>,
+}
+
+impl Default for TransportManager {
+    fn default() -> Self {
+        Self {
+            worker: None,
+            cleanup_in_progress: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 impl TransportManager {
-    pub fn connect(&mut self, app: AppHandle, request: ConnectRequest) {
-        self.disconnect();
+    pub fn connect(&mut self, app: AppHandle, request: ConnectRequest) -> Result<(), String> {
+        if self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| worker.handle.is_finished())
+        {
+            if let Some(worker) = self.worker.take() {
+                let _ = worker.handle.join();
+            }
+        }
+        if self.worker.is_some() {
+            return Err("当前已有活动连接，请先断开".to_string());
+        }
+        if self.cleanup_in_progress.load(Ordering::Acquire) {
+            return Err("上一次连接正在释放资源，请稍后重试".to_string());
+        }
         let is_serial = request.transport == "serial";
         let (commands, receiver) = mpsc::channel();
-        let spawn_error_app = app.clone();
+        let worker_app = app.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let worker_stopped = Arc::clone(&stopped);
         let handle = thread::Builder::new()
             .name(format!("transport-{}", request.transport))
             .spawn(move || {
@@ -61,33 +92,24 @@ impl TransportManager {
                 if let Err(message) = result {
                     emit(&app, "error", "system", Vec::new(), message);
                 }
-                emit(&app, "disconnected", "system", Vec::new(), "连接已关闭");
+                if !worker_stopped.load(Ordering::Acquire) {
+                    emit(&app, "disconnected", "system", Vec::new(), "连接已关闭");
+                }
             });
         let handle = match handle {
             Ok(handle) => handle,
             Err(error) => {
-                emit(
-                    &spawn_error_app,
-                    "error",
-                    "system",
-                    Vec::new(),
-                    format!("无法创建连接线程: {error}"),
-                );
-                emit(
-                    &spawn_error_app,
-                    "disconnected",
-                    "system",
-                    Vec::new(),
-                    "连接已关闭",
-                );
-                return;
+                return Err(format!("无法创建连接线程: {error}"));
             }
         };
         self.worker = Some(Worker {
             commands,
             handle,
             is_serial,
+            app: worker_app,
+            stopped,
         });
+        Ok(())
     }
 
     pub fn send(&self, bytes: Vec<u8>) -> Result<(), String> {
@@ -118,8 +140,27 @@ impl TransportManager {
 
     pub fn disconnect(&mut self) {
         if let Some(worker) = self.worker.take() {
+            worker.stopped.store(true, Ordering::Release);
+            self.cleanup_in_progress.store(true, Ordering::Release);
             let _ = worker.commands.send(WorkerCommand::Stop);
-            let _ = worker.handle.join();
+            emit(
+                &worker.app,
+                "disconnected",
+                "system",
+                Vec::new(),
+                "连接已关闭",
+            );
+            let cleanup_in_progress = Arc::clone(&self.cleanup_in_progress);
+            if thread::Builder::new()
+                .name("transport-cleanup".to_string())
+                .spawn(move || {
+                    let _ = worker.handle.join();
+                    cleanup_in_progress.store(false, Ordering::Release);
+                })
+                .is_err()
+            {
+                self.cleanup_in_progress.store(false, Ordering::Release);
+            }
         }
     }
 }
