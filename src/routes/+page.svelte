@@ -2012,12 +2012,13 @@
     .app-shell { grid-template-rows: auto auto minmax(0, 1fr) 5px 132px 25px; }
     .connection-fields { order: 3; flex-basis: 100%; }
     .top-actions { margin-left: auto; }
-    .workspace.with-sidebar { grid-template-columns: minmax(280px, 1fr) minmax(300px, .85fr); }
+    .workspace.with-sidebar { grid-template-columns: minmax(280px, 1fr) 5px minmax(300px, .85fr); }
   }
   @media (max-width: 700px) {
     .mode-switch:first-child button { padding: 0 6px; }
     .connection-fields { overflow-x: auto; padding-bottom: 2px; }
     .workspace.with-sidebar { grid-template-columns: 1fr; grid-template-rows: minmax(210px, 1fr) minmax(190px, .8fr); }
+    .extended-splitter { display: none; }
     .send-pane { margin-top: 4px; }
     .settings-body { grid-template-columns: 1fr; }
     .probe-settings, .data-settings { grid-column: 1; }
