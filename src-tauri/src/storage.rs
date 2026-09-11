@@ -1,6 +1,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use serde::{Serialize, de::DeserializeOwned};
@@ -43,17 +44,37 @@ fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     }
     let tmp = temp_path(path);
     let bytes = serde_json::to_vec_pretty(value).map_err(io::Error::other)?;
-    fs::write(&tmp, bytes)?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(tmp, path)
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&tmp)?;
+    use io::Write;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    drop(file);
+    replace_file(&tmp, path)
 }
 
 fn temp_path(path: &Path) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let mut value = path.as_os_str().to_os_string();
-    value.push(".tmp");
+    value.push(format!(
+        ".tmp-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     PathBuf::from(value)
+}
+
+fn replace_file(source: &Path, target: &Path) -> io::Result<()> {
+    match fs::rename(source, target) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            fs::remove_file(target)?;
+            fs::rename(source, target)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]

@@ -2,8 +2,16 @@ use std::{
     fs::OpenOptions,
     io::Write,
     panic,
+    path::PathBuf,
+    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static LOG_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_log_directory(directory: PathBuf) {
+    let _ = LOG_DIRECTORY.set(directory);
+}
 
 pub fn init() {
     let default_hook = panic::take_hook();
@@ -34,7 +42,15 @@ pub fn init() {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .unwrap_or_default();
-        let path = std::env::temp_dir().join("z-com-panic.log");
+        let directory = LOG_DIRECTORY.get().cloned().unwrap_or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(|path| path.join("logs")))
+                .unwrap_or_else(|| std::env::temp_dir().join("z-com-logs"))
+        });
+        let _ = std::fs::create_dir_all(&directory);
+        let date = chrono::Local::now().format("%Y-%m-%d");
+        let path = directory.join(format!("log_{date}.txt"));
         if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
             let _ = writeln!(
                 file,

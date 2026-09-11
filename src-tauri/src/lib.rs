@@ -463,14 +463,40 @@ fn save_extended(state: State<'_, AppState>, extended: ExtendedSendConfig) -> Re
 
 #[tauri::command]
 fn read_extended_file(path: String) -> Result<ExtendedSendConfig, String> {
-    storage::read_extended_file(std::path::Path::new(&path))
-        .map_err(|error| format!("读取扩展发送文件失败: {error}"))
+    let path = validate_extended_file_path(&path, false)?;
+    storage::read_extended_file(&path).map_err(|error| format!("读取扩展发送文件失败: {error}"))
 }
 
 #[tauri::command]
 fn write_extended_file(path: String, extended: ExtendedSendConfig) -> Result<(), String> {
-    storage::write_extended_file(std::path::Path::new(&path), &extended)
+    let path = validate_extended_file_path(&path, true)?;
+    storage::write_extended_file(&path, &extended)
         .map_err(|error| format!("导出扩展发送文件失败: {error}"))
+}
+
+fn validate_extended_file_path(value: &str, for_write: bool) -> Result<PathBuf, String> {
+    let path = dunce::canonicalize(value).or_else(|error| {
+        if for_write {
+            let path = PathBuf::from(value);
+            let parent = path.parent().ok_or(error.to_string())?;
+            Ok(dunce::canonicalize(parent)
+                .map_err(|parent_error| parent_error.to_string())?
+                .join(path.file_name().ok_or_else(|| "文件名无效".to_string())?))
+        } else {
+            Err(error.to_string())
+        }
+    })?;
+    if path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_none_or(|value| !value.eq_ignore_ascii_case("json"))
+    {
+        return Err("扩展发送文件必须使用 .json 扩展名".into());
+    }
+    if path.is_dir() {
+        return Err("扩展发送路径不能是目录".into());
+    }
+    Ok(path)
 }
 
 fn lock_error<T>(error: std::sync::PoisonError<T>) -> String {
@@ -588,14 +614,9 @@ pub fn run() {
         .setup(|app| {
             let instance = allocate_instance()?;
             let config_directory = instance.data_root.join("config");
-            fs::create_dir_all(config_directory.join("probe_rs_targets"))
-                .map_err(|error| format!("无法创建自定义 MCU 目录: {error}"))?;
             let config = storage::load_config(&config_directory);
-            storage::save_config(&config_directory, &config)
-                .map_err(|error| format!("无法初始化设置文件: {error}"))?;
             let extended = storage::load_extended(&config_directory);
-            storage::save_extended(&config_directory, &extended)
-                .map_err(|error| format!("无法初始化扩展发送文件: {error}"))?;
+            panic_hook::set_log_directory(instance.data_root.join("logs"));
             let logger = Logger::new(&instance.data_root)
                 .map_err(|error| format!("无法创建日志: {error}"))?;
             app.manage(AppState {
@@ -631,6 +652,18 @@ pub fn run() {
             read_extended_file,
             write_extended_file,
         ])
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                if let Some(state) = window.app_handle().try_state::<AppState>() {
+                    if let Ok(mut transport) = state.transport.lock() {
+                        transport.disconnect();
+                    }
+                    if let Ok(mut logger) = state.logger.lock() {
+                        logger.log_event("应用正在退出");
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -37,6 +37,8 @@ pub struct AppConfig {
     pub socket_protocol: String,
     pub socket_role: String,
     pub selected_probe: String,
+    pub window_width: u32,
+    pub window_height: u32,
 }
 
 impl Default for AppConfig {
@@ -71,6 +73,8 @@ impl Default for AppConfig {
             socket_protocol: "TCP".into(),
             socket_role: "Client".into(),
             selected_probe: String::new(),
+            window_width: 1080,
+            window_height: 760,
         }
     }
 }
