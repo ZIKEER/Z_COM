@@ -4,8 +4,11 @@
   "description": "Capability for the main window",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-inner-size",
+    "core:window:allow-scale-factor",
+    "core:window:allow-set-size",
     "opener:allow-open-path",
     "dialog:allow-open",
     "dialog:allow-save"
