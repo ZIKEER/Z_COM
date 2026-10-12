@@ -653,7 +653,10 @@ pub fn run() {
             write_extended_file,
         ])
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) && window.label() == "main" {
+                if let Some(plot_window) = window.app_handle().get_webview_window("plot") {
+                    let _ = plot_window.close();
+                }
                 if let Some(state) = window.app_handle().try_state::<AppState>() {
                     if let Ok(mut transport) = state.transport.lock() {
                         transport.disconnect();

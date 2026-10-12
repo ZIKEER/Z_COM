@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { LogicalSize } from "@tauri-apps/api/dpi";
   import licenseText from "../../LICENSE?raw";
   import noticeText from "../../NOTICE?raw";
   import thirdPartyNoticesText from "../../THIRD_PARTY_NOTICES.md?raw";
@@ -75,6 +77,8 @@
     socket_protocol: "TCP" | "UDP";
     socket_role: "Client" | "Server";
     selected_probe: string;
+    window_width: number;
+    window_height: number;
   }
 
   interface ExtendedItem {
@@ -198,6 +202,8 @@
     socket_protocol: "TCP",
     socket_role: "Client",
     selected_probe: "",
+    window_width: 1080,
+    window_height: 760,
   };
 
   let config = $state<AppConfig>({ ...defaultConfig });
@@ -237,6 +243,7 @@
   let sentCount = $state(0);
   let lineId = 0;
   let receiveView: HTMLPreElement;
+  let extendedScrollable = $state(false);
   let extendedRunning = $state(false);
   let stopExtended = false;
   let version = $state("0.1.3");
@@ -261,6 +268,7 @@
   let updateProgress = $state<UpdateProgress | null>(null);
   let updateStatus = $state("可手动检查 GitHub / Gitee 新版本");
   let updateError = $state("");
+  let windowSaveTimer: number | undefined;
 
   const CONNECTION_TIMEOUT_MS = 12_000;
   const DEFAULT_BAUDRATES = [
@@ -280,8 +288,11 @@
   onMount(() => {
     let unlistenTransport: UnlistenFn | undefined;
     let unlistenUpdate: UnlistenFn | undefined;
+    let unlistenResize: UnlistenFn | undefined;
     void (async () => {
       try {
+        const appWindow = getCurrentWindow();
+        unlistenResize = await appWindow.onResized(() => scheduleWindowSave());
         unlistenTransport = await listen<TransportEvent>("transport-event", ({ payload }) => handleTransportEvent(payload));
         unlistenUpdate = await listen<UpdateProgress>("update-progress", ({ payload }) => {
           updateProgress = payload;
@@ -289,8 +300,13 @@
         });
         const data = await invoke<BootstrapData>("bootstrap");
         config = data.config;
+        if (config.window_width >= 760 && config.window_height >= 560) {
+          try {
+            await appWindow.setSize(new LogicalSize(config.window_width, config.window_height));
+          } catch {}
+        }
         config.send_panel_ratio = clamp(config.send_panel_ratio, 0.12, 0.5);
-        config.extended_panel_ratio = clamp(config.extended_panel_ratio, 0.25, 0.6);
+        config.extended_panel_ratio = clamp(config.extended_panel_ratio, 0.07, 0.7);
         try {
           config.baudrate = String(validatedBaudrate(config.baudrate));
         } catch {
@@ -328,6 +344,8 @@
       clearConnectionWatchdog();
       unlistenTransport?.();
       unlistenUpdate?.();
+      unlistenResize?.();
+      if (windowSaveTimer) window.clearTimeout(windowSaveTimer);
     };
   });
 
@@ -554,6 +572,7 @@
     } else if (event.kind === "data") {
       if (event.direction === "received") {
         receivedCount += event.bytes.length;
+        void emit("plot-data", { bytes: event.bytes });
         appendData(new Uint8Array(event.bytes), "received");
       } else if (event.direction === "sent") {
         sentCount += event.bytes.length;
@@ -748,6 +767,33 @@
       textarea.select();
       document.execCommand("copy");
       textarea.remove();
+    }
+  }
+
+  async function openPlotWindow() {
+    try {
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      const existing = await WebviewWindow.getByLabel("plot");
+      if (existing) {
+        await existing.show();
+        await existing.setFocus();
+        return;
+      }
+      const window = new WebviewWindow("plot", {
+        title: "数据曲线",
+        url: "/plot",
+        width: 900,
+        height: 560,
+        minWidth: 620,
+        minHeight: 380,
+        center: true,
+      });
+      await new Promise<void>((resolve, reject) => {
+        window.once("tauri://created", () => resolve());
+        window.once("tauri://error", (event) => reject(event.payload));
+      });
+    } catch (error) {
+      showError(`打开曲线窗口失败: ${stringifyError(error)}`);
     }
   }
 
@@ -1233,6 +1279,23 @@
     void savePreferences();
   }
 
+  function scheduleWindowSave() {
+    if (windowSaveTimer) window.clearTimeout(windowSaveTimer);
+    windowSaveTimer = window.setTimeout(() => void saveWindowSize(), 250);
+  }
+
+  async function saveWindowSize() {
+    try {
+      const appWindow = getCurrentWindow();
+      const logicalSize = (await appWindow.innerSize()).toLogical(await appWindow.scaleFactor());
+      config.window_width = Math.round(logicalSize.width);
+      config.window_height = Math.round(logicalSize.height);
+      await savePreferences();
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   function persistProbeChip() {
     const chip = config.probe_chip.trim();
     config.probe_chip = chip;
@@ -1293,7 +1356,7 @@
     event.preventDefault();
     resizing = true;
     const move = (moveEvent: PointerEvent) => {
-      config.extended_panel_ratio = clamp((window.innerWidth - moveEvent.clientX) / Math.max(window.innerWidth, 1), 0.25, 0.6);
+      config.extended_panel_ratio = clamp((window.innerWidth - moveEvent.clientX) / Math.max(window.innerWidth, 1), 0.07, 0.7);
     };
     const finish = () => {
       resizing = false;
@@ -1309,6 +1372,23 @@
 
   function clamp(value: number, minimum: number, maximum: number) {
     return Math.min(Math.max(Number.isFinite(value) ? value : minimum, minimum), maximum);
+  }
+
+  function trackVerticalOverflow(node: HTMLElement) {
+    const update = () => {
+      extendedScrollable = node.scrollHeight > node.clientHeight + 1;
+    };
+    const resizeObserver = new ResizeObserver(update);
+    const mutationObserver = new MutationObserver(update);
+    resizeObserver.observe(node);
+    mutationObserver.observe(node, { childList: true, subtree: true });
+    requestAnimationFrame(update);
+    return {
+      destroy() {
+        resizeObserver.disconnect();
+        mutationObserver.disconnect();
+      },
+    };
   }
 
   function clearReceive() {
@@ -1508,6 +1588,7 @@
         </div>
         <label class="inline-check"><input type="checkbox" bind:checked={config.auto_scroll} onchange={savePreferences} />自动滚动</label>
         <span class="toolbar-spacer"></span>
+        <button class="plot-toggle" title="打开独立数据曲线窗口" onclick={openPlotWindow}>曲线</button>
         <button class="icon-button subtle" title="清空报文并重置收发计数" onclick={clearReceive}><Eraser size={16} /></button>
       </div>
       <pre class="receive-output" bind:this={receiveView} aria-label="接收数据" oncontextmenu={showReceiveContextMenu}>{@html receiveHtml}</pre>
@@ -1522,21 +1603,21 @@
           <button class="icon-button subtle" title="导出" onclick={exportExtended}><Download size={15} /></button>
           <button class="icon-button subtle" title="添加条目" onclick={addExtendedItem}><Plus size={16} /></button>
         </div>
-        <div class="extended-table-wrap">
+        <div class="extended-table-wrap" class:has-scrollbar={extendedScrollable} use:trackVerticalOverflow>
           <table>
-            <thead><tr><th>HEX</th><th>数据内容 / 注释</th><th>序号</th><th>延时</th><th></th></tr></thead>
+            <thead><tr><th class="hex-column">HEX</th><th>数据内容 / 注释</th><th class="sequence-column">序号</th><th class="delay-column">延时</th><th class="actions-column"></th></tr></thead>
             <tbody>
               {#each extended.items as item, index (item.id)}
                 <tr>
-                  <td><input aria-label="HEX 格式" type="checkbox" bind:checked={item.is_hex} onchange={persistExtended} /></td>
+                  <td class="hex-column"><input aria-label="HEX 格式" type="checkbox" bind:checked={item.is_hex} onchange={persistExtended} /></td>
                   <td><input class="item-data" aria-label="发送数据" title={item.is_hex ? "输入 HEX 字节，例如 01 03 00 00" : "支持转义：\\r  \\n  \\t  \\0  \\\\  \\xNN"} placeholder={item.is_hex ? "HEX 字节" : "ASCII，支持 \\r \\n \\t \\0 \\xNN"} bind:value={item.data} onblur={persistExtended} /><input class="item-comment" aria-label="注释" placeholder="注释" bind:value={item.comment} onblur={persistExtended} /></td>
-                  <td><input aria-label="发送序号" type="number" min="0" bind:value={item.sort_order} onblur={persistExtended} /></td>
-                  <td><input aria-label="发送延时" type="number" min="0" bind:value={item.delay} onblur={persistExtended} /></td>
+                  <td class="sequence-column"><input aria-label="发送序号" type="number" min="0" bind:value={item.sort_order} onblur={persistExtended} /></td>
+                  <td class="delay-column"><input aria-label="发送延时" type="number" min="0" bind:value={item.delay} onblur={persistExtended} /></td>
                   <td class="row-actions">
-                    <button title="发送此条" onclick={() => sendExtendedItem(item)}><Send size={14} /></button>
-                    <button title="上移" onclick={() => moveExtendedItem(index, -1)} disabled={index === 0}><ArrowUp size={14} /></button>
-                    <button title="下移" onclick={() => moveExtendedItem(index, 1)} disabled={index === extended.items.length - 1}><ArrowDown size={14} /></button>
-                    <button title="删除" onclick={() => deleteExtendedItem(index)}><Trash2 size={14} /></button>
+                    <button class="item-send" title={item.comment || "发送此条"} onclick={() => sendExtendedItem(item)}><Send size={14} /><span class="item-send-label">发送</span><span class="item-key-label">{item.comment.trim() || "发送"}</span></button>
+                    <button class="item-move" title="上移" onclick={() => moveExtendedItem(index, -1)} disabled={index === 0}><ArrowUp size={14} /></button>
+                    <button class="item-move" title="下移" onclick={() => moveExtendedItem(index, 1)} disabled={index === extended.items.length - 1}><ArrowDown size={14} /></button>
+                    <button class="item-delete" title="删除" onclick={() => deleteExtendedItem(index)}><Trash2 size={14} /></button>
                   </td>
                 </tr>
               {/each}
@@ -1843,14 +1924,16 @@
   .error-strip span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .error-strip button { width: 24px; min-height: 20px; border: 0; background: transparent; display: grid; place-items: center; }
   .workspace { grid-row: 3; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); padding: 4px 4px 0; }
-  .workspace.with-sidebar { grid-template-columns: minmax(350px, 1fr) 5px clamp(280px, var(--extended-panel-width), 70%); }
+  .workspace.with-sidebar { width: 100%; grid-template-columns: minmax(0, 1fr) 5px minmax(0, clamp(60px, var(--extended-panel-width), 70%)); }
   .receive-pane, .extended-pane, .send-pane { min-width: 0; background: #fff; border: 1px solid #a9a9a9; }
   .receive-pane, .extended-pane { min-height: 0; display: flex; flex-direction: column; }
+  .extended-pane { container-type: inline-size; min-width: 0; }
   .pane-toolbar { height: 33px; display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: #f5f5f5; border-bottom: 1px solid #c8c8c8; flex: 0 0 33px; }
   .pane-toolbar strong { font-size: 13px; }
   .toolbar-spacer { flex: 1; }
   .inline-check, .send-options label, .extended-footer label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
   .receive-output { margin: 0; padding: 7px 9px; flex: 1; min-height: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.48 "Cascadia Mono", Consolas, monospace; background: #fff; color: #202020; }
+  .plot-toggle { min-height: 24px; padding: 0 7px; display: inline-flex; align-items: center; gap: 4px; color: #3f4b45; background: #fff; border: 1px solid #b8c2bc; border-radius: 3px; font-size: 12px; }
   :global(.display-timestamp) { color: #008b8b; font-weight: 600; }
   :global(.display-arrow) { color: #1f6feb; font-weight: 700; }
   :global(.display-label) { font-weight: 700; }
@@ -1875,7 +1958,10 @@
   .edit-context-menu { width: 190px; }
   .selection-context-menu { width: 120px; }
   .context-separator { height: 1px; margin: 4px 5px; background: #dedede; }
-  .extended-table-wrap { flex: 1; min-height: 0; overflow: auto; }
+  .extended-table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+  .extended-table-wrap.has-scrollbar { overflow-y: scroll; scrollbar-width: thin; }
+  .extended-table-wrap.has-scrollbar::-webkit-scrollbar { width: 7px; }
+  .extended-table-wrap.has-scrollbar::-webkit-scrollbar-thumb { background: #a8adb1; border-radius: 4px; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
   th { position: sticky; top: 0; z-index: 1; background: #f0f0f0; border-bottom: 1px solid #b8b8b8; height: 27px; font-weight: 600; }
   th:nth-child(1) { width: 36px; } th:nth-child(3) { width: 48px; } th:nth-child(4) { width: 64px; } th:nth-child(5) { width: 92px; }
@@ -1885,6 +1971,33 @@
   .item-comment { border-top: 0; color: #667078; background: #fafbfb; }
   .row-actions { display: grid; grid-template-columns: repeat(4, 21px); gap: 1px; }
   .row-actions button { min-height: 21px; width: 21px; padding: 0; display: grid; place-items: center; border-color: transparent; background: transparent; }
+  .item-send-label, .item-key-label { display: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @container (max-width: 429px) {
+    .extended-pane .sequence-column, .extended-pane .delay-column { display: none; }
+    .extended-pane th.actions-column { width: 92px; }
+  }
+  @container (max-width: 279px) {
+    .extended-pane .item-move, .extended-pane .item-delete { display: none; }
+    .extended-pane th.actions-column { width: 54px; }
+    .extended-pane .row-actions { display: flex; justify-content: center; }
+    .extended-pane .item-send { width: 48px; }
+    .extended-pane .item-send-label { display: inline; }
+  }
+  @container (max-width: 179px) {
+    .extended-pane .pane-toolbar .icon-button.subtle { display: none; }
+    .extended-pane .extended-footer label, .extended-pane .extended-footer .help { display: none; }
+    .extended-pane .extended-footer .run-button { margin-left: 0; flex: 1; min-width: 0; }
+    .extended-pane .pane-toolbar { min-width: 0; }
+    .extended-pane .hex-column, .extended-pane td:nth-child(2) input { display: none; }
+    .extended-pane th:nth-child(2), .extended-pane th.actions-column, .extended-pane td:nth-child(2) { display: none; }
+    .extended-pane table, .extended-pane tbody, .extended-pane tr, .extended-pane td { display: block; width: 100%; }
+    .extended-pane tr { border-bottom: 1px solid #e0e4e7; }
+    .extended-pane td.row-actions { padding: 3px; }
+    .extended-pane .item-send { width: 100%; min-height: 30px; display: flex; align-items: center; justify-content: flex-start; gap: 6px; padding: 0 8px; background: #f5f5f5; border-color: #c6cdd1; }
+    .extended-pane .item-send > :global(svg) { display: none; }
+    .extended-pane .item-send-label { display: none; }
+    .extended-pane .item-key-label { display: inline; flex: 1; min-width: 0; color: #202020; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
   .empty-state { padding: 28px 10px; text-align: center; color: #7b858d; }
   .extended-footer { min-height: 37px; display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: #f5f5f5; border-top: 1px solid #c8c8c8; }
   .extended-footer .run-button { margin-left: auto; min-height: 27px; }
@@ -2008,18 +2121,40 @@
   .legal-content { min-height: 0; margin: 0; overflow: auto; padding: 16px; color: #35443d; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 "Cascadia Mono", Consolas, monospace; }
 
   @media (max-width: 1100px) {
+    .connection-bar { gap: 2px 4px; padding: 2px 5px; row-gap: 1px; align-content: center; }
+    .connection-fields { gap: 3px; height: 30px; }
+    .connection-fields label { gap: 3px; }
+    .connection-fields select, .connection-fields input { padding: 2px 4px; }
+    .connection-fields select { padding-right: 21px; }
+    .pane-toolbar { gap: 3px; padding: 2px 4px; }
+    .mode-switch button, .mini-switch button { padding-left: 6px; padding-right: 6px; }
+    .command-button, .run-button, .send-button { padding-left: 8px; padding-right: 8px; }
+    .workspace { padding: 2px 2px 0; }
+    .extended-splitter { width: 2px; }
+    .receive-output { padding: 4px 6px; }
+    .extended-table-wrap { scrollbar-gutter: auto; }
+    th { height: 25px; }
+    td { padding: 1px 2px; }
+    td input[type="number"], .item-data, .item-comment { height: 22px; padding: 1px 3px; }
+    .item-comment { color: #667078; }
+    .row-actions { gap: 0; }
+    .extended-footer { gap: 5px; padding: 2px 4px; }
+    .send-pane { margin-left: 3px; margin-right: 3px; padding: 3px; gap: 2px 4px; }
+    .send-options .toolbar-spacer { flex: 0 0 12px; }
     .connection-bar { flex-wrap: wrap; height: auto; }
-    .app-shell { grid-template-rows: auto auto minmax(0, 1fr) 5px 132px 25px; }
+    .app-shell { grid-template-rows: auto auto minmax(0, 1fr) 5px 112px 25px; }
     .connection-fields { order: 3; flex-basis: 100%; }
     .top-actions { margin-left: auto; }
-    .workspace.with-sidebar { grid-template-columns: minmax(280px, 1fr) 5px minmax(300px, .85fr); }
+    .workspace.with-sidebar { width: 100%; grid-template-columns: minmax(0, 1fr) 3px minmax(0, var(--extended-panel-width)); }
   }
   @media (max-width: 700px) {
     .mode-switch:first-child button { padding: 0 6px; }
     .connection-fields { overflow-x: auto; padding-bottom: 2px; }
-    .workspace.with-sidebar { grid-template-columns: 1fr; grid-template-rows: minmax(210px, 1fr) minmax(190px, .8fr); }
-    .extended-splitter { display: none; }
-    .send-pane { margin-top: 4px; }
+    .workspace.with-sidebar { width: 100%; grid-template-columns: minmax(0, 1fr) 3px minmax(0, var(--extended-panel-width)); }
+    .extended-splitter { display: block; width: 3px; }
+    .app-shell { grid-template-rows: auto auto minmax(0, 1fr) 4px 104px 22px; }
+    .send-pane { margin-top: 3px; }
+    .send-options .toolbar-spacer { flex-basis: 6px; }
     .settings-body { grid-template-columns: 1fr; }
     .probe-settings, .data-settings { grid-column: 1; }
     .status-path { display: none; }
