@@ -74,7 +74,7 @@ struct App {
     counter_baseline: crate::native_events::Counters,
     sink: EventSink,
     devices: Vec<DeviceEntry>,
-    receive: VecDeque<String>,
+    receive: VecDeque<crate::native_terminal::Line>,
     receive_view: crate::native_receive::ReceiveView,
     send_text: String,
     connected: bool,
@@ -464,9 +464,9 @@ impl App {
         }
     }
 
-    fn append(&mut self, text: String) {
-        for line in text.lines() {
-            self.receive.push_back(line.to_owned());
+    fn append(&mut self, lines: Vec<crate::native_terminal::Line>) {
+        for line in lines {
+            self.receive.push_back(line);
             while self.receive.len() > 5000 {
                 self.receive.pop_front();
                 self.receive_view.trimmed();
@@ -505,32 +505,19 @@ impl App {
                 if event.direction == "received" {
                     self.plot.consume(&event.bytes);
                 }
-                let arrow = if event.direction == "received" {
-                    "←"
-                } else {
-                    "→"
-                };
-                let hex = || {
-                    event
-                        .bytes
-                        .iter()
-                        .map(|byte| format!("{byte:02X}"))
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                };
-                let ascii = || display_ascii(&event.bytes);
-                let text = match self.config.display_mode.as_str() {
-                    "HEX" => format!("[{stamp}] {arrow} HEX: {}", hex()),
-                    "MIXED" => format!(
-                        "[{stamp}]\n{arrow} HEX: {}\n{arrow} ASCII: {}",
-                        hex(),
-                        ascii()
-                    ),
-                    _ => format!("[{stamp}] {arrow} ASCII: {}", ascii()),
-                };
-                self.append(text);
+                self.append(crate::native_terminal::data_lines(
+                    &stamp,
+                    event.direction == "received",
+                    &event.bytes,
+                    &self.config.display_mode,
+                    self.config.display_ansi,
+                ));
             } else if !event.message.is_empty() {
-                self.append(format!("[{stamp}] ◆ {}", event.message));
+                self.append(vec![crate::native_terminal::event_line(
+                    &stamp,
+                    &event.kind,
+                    &event.message,
+                )]);
             }
         }
         let counters = self.events.counters();
@@ -2140,25 +2127,6 @@ fn open_directory(path: &std::path::Path) -> std::io::Result<()> {
         std::process::Command::new("xdg-open").arg(path).spawn()?;
     }
     Ok(())
-}
-
-fn display_ascii(bytes: &[u8]) -> String {
-    let mut output = String::new();
-    for byte in bytes {
-        match *byte {
-            27 => output.push('\u{1b}'),
-            0..=31 => {
-                output.push(char::from_u32(0x2400 + u32::from(*byte)).unwrap());
-                if *byte == 10 {
-                    output.push('\n');
-                }
-            }
-            32..=126 => output.push(char::from(*byte)),
-            127 => output.push('␡'),
-            _ => output.push_str(&format!("\\x{byte:02x}")),
-        }
-    }
-    output
 }
 
 fn encode(value: &str, hex: bool, escapes: bool, crlf: bool) -> Result<Vec<u8>, String> {

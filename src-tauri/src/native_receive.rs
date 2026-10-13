@@ -1,3 +1,4 @@
+use crate::native_terminal::Line;
 use eframe::egui::{self, Color32, Sense};
 use std::collections::VecDeque;
 
@@ -23,7 +24,7 @@ impl ReceiveView {
     pub fn clear(&mut self) {
         *self = Self::default();
     }
-    pub fn select_all(&mut self, lines: &VecDeque<String>) {
+    pub fn select_all(&mut self, lines: &VecDeque<Line>) {
         if let Some(last) = lines.back() {
             self.anchor = Some(Position {
                 line: self.first_line,
@@ -31,11 +32,11 @@ impl ReceiveView {
             });
             self.cursor = Some(Position {
                 line: self.first_line + lines.len() as u64 - 1,
-                character: crate::native_terminal::plain(last).chars().count(),
+                character: last.plain().chars().count(),
             });
         }
     }
-    pub fn selected(&self, lines: &VecDeque<String>) -> String {
+    pub fn selected(&self, lines: &VecDeque<Line>) -> String {
         let Some((start, end)) = self.range() else {
             return String::new();
         };
@@ -45,7 +46,7 @@ impl ReceiveView {
             if line_number < start.line || line_number > end.line {
                 continue;
             }
-            let plain = crate::native_terminal::plain(line);
+            let plain = line.plain();
             let begin = if line_number == start.line {
                 start.character
             } else {
@@ -75,7 +76,7 @@ impl ReceiveView {
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
-        lines: &VecDeque<String>,
+        lines: &VecDeque<Line>,
         ansi: &mut bool,
         auto_scroll: bool,
     ) -> bool {
@@ -164,11 +165,7 @@ impl ReceiveView {
                         }
                         if ui.button("复制全部").clicked() {
                             context.copy_text(
-                                lines
-                                    .iter()
-                                    .map(|line| crate::native_terminal::plain(line))
-                                    .collect::<Vec<_>>()
-                                    .join("\n"),
+                                lines.iter().map(Line::plain).collect::<Vec<_>>().join("\n"),
                             );
                             ui.close_menu();
                         }
@@ -227,7 +224,8 @@ mod tests {
     #[test]
     fn selection_survives_scrolling_and_trimming_and_uses_unicode_positions() {
         let mut view = ReceiveView::default();
-        let mut lines = VecDeque::from(["abc".into(), "中文def".into(), "last".into()]);
+        let mut lines =
+            VecDeque::from([Line::data("abc"), Line::data("中文def"), Line::data("last")]);
         view.anchor = Some(Position {
             line: 0,
             character: 1,
