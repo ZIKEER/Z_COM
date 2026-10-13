@@ -932,6 +932,9 @@ impl App {
             ui.add_sized(
                 ui.available_size(),
                 egui::TextEdit::multiline(&mut self.send_text)
+                    // 默认至少 4 行高，发送区较矮时会超出面板被裁掉；改为填满剩余空间
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(1)
                     .hint_text(hint)
                     .margin(egui::vec2(8.0, 6.0))
                     .font(egui::TextStyle::Monospace),
