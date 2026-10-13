@@ -509,71 +509,133 @@ impl App {
         let idle = !self.connected && self.connecting.is_none();
         let viewport = ui.ctx().screen_rect().width();
         let vw = |percent: f32, min: f32, max: f32| (viewport * percent / 100.0).clamp(min, max);
-        ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 7.0;
-            ui.add_enabled_ui(idle, |ui| {
-                mode_switch(
-                    ui,
-                    &mut self.config.transport_mode,
-                    &[
-                        ("serial", "串口"),
-                        ("socket", "Socket"),
-                        ("probe", "调试探针 / RTT"),
-                    ],
-                    false,
-                );
-            });
-            ui.add_enabled_ui(idle && !self.scanning, |ui| {
-                let hint = if self.scanning {
-                    "正在扫描设备"
-                } else {
-                    "刷新设备"
-                };
-                if icon_button(ui, "refresh", hint, false).clicked() {
-                    self.refresh_devices();
+        // 右侧操作区固定宽度（连接按钮 + 3 个图标按钮），左侧字段在剩余宽度内自适应并裁剪。
+        // 与原版 `@media (max-width: 1100px)` 一致，窄窗口时连接字段换到第二行。
+        const ACTIONS_WIDTH: f32 = 80.0 + 3.0 * 30.0 + 3.0 * 4.0;
+        let compact = compact_connection_bar(viewport);
+        let full = ui.available_rect_before_wrap();
+        let first = if compact {
+            egui::Rect::from_min_size(full.min, egui::vec2(full.width(), 30.0))
+        } else {
+            full
+        };
+        let second = egui::Rect::from_min_max(egui::pos2(full.left(), first.bottom() + 4.0), full.max);
+        let left = egui::Rect::from_min_max(
+            first.min,
+            egui::pos2((first.right() - ACTIONS_WIDTH - 8.0).max(first.left()), first.bottom()),
+        );
+        let right = egui::Rect::from_min_max(
+            egui::pos2(first.right() - ACTIONS_WIDTH, first.top()),
+            first.max,
+        );
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(left)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            |ui| {
+                ui.set_clip_rect(left.intersect(ui.clip_rect()));
+                ui.spacing_mut().item_spacing.x = 7.0;
+                ui.add_enabled_ui(idle, |ui| {
+                    mode_switch(
+                        ui,
+                        &mut self.config.transport_mode,
+                        &[
+                            ("serial", "串口"),
+                            ("socket", "Socket"),
+                            ("probe", "调试探针 / RTT"),
+                        ],
+                        false,
+                    );
+                });
+                ui.add_enabled_ui(idle && !self.scanning, |ui| {
+                    let hint = if self.scanning {
+                        "正在扫描设备"
+                    } else {
+                        "刷新设备"
+                    };
+                    if icon_button(ui, "refresh", hint, false).clicked() {
+                        self.refresh_devices();
+                    }
+                });
+                if !compact {
+                    self.connection_fields(ui, idle, &vw);
                 }
-            });
-            match self.config.transport_mode.as_str() {
-                "socket" => self.socket_fields(ui, idle),
-                "probe" => self.probe_fields(ui, idle, vw(27.0, 190.0, 360.0), vw(18.0, 145.0, 220.0)),
-                _ => self.serial_fields(ui, idle, vw(23.0, 160.0, 300.0)),
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            },
+        );
+        if compact {
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(second)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                |ui| {
+                    ui.set_clip_rect(second.intersect(ui.clip_rect()));
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    self.connection_fields(ui, idle, &vw);
+                },
+            );
+        }
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(right)
+                .layout(egui::Layout::right_to_left(egui::Align::Center)),
+            |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                let open = self.config.preset_panel_visible;
-                if icon_button_sized(
-                    ui,
-                    if open { "chevron-right" } else { "chevron-left" },
-                    "扩展发送",
-                    false,
-                    open,
-                    30.0,
-                )
-                .clicked()
-                {
-                    self.config.preset_panel_visible = !open;
-                }
-                if icon_button(ui, "help", "关于 Z_COM", false).clicked() {
-                    self.about_open = true;
-                }
-                if icon_button(ui, "settings", "更多设置", false).clicked() {
-                    self.draft = self.config.clone();
-                    self.settings_open = true;
-                    self.tasks
-                        .send(Task::CheckSdk(self.draft.jlink_sdk_path.clone()));
-                }
-                let (icon, label, fill, border) = if self.connected {
-                    ("unlink", "断开", palette::GREEN, palette::GREEN_BORDER)
-                } else if self.connecting.is_some() {
-                    ("stop", "取消", palette::AMBER, palette::AMBER_BORDER)
-                } else {
-                    ("link", "连接", palette::RED, palette::RED_BORDER)
-                };
-                if command_button(ui, icon, label, fill, border, 30.0).clicked() {
-                    self.connect();
-                }
-            });
-        });
+                self.connection_actions(ui);
+            },
+        );
+    }
+
+    fn connection_fields(&mut self, ui: &mut egui::Ui, idle: bool, vw: &dyn Fn(f32, f32, f32) -> f32) {
+        let budget = ui.available_width();
+        match self.config.transport_mode.as_str() {
+            "socket" => self.socket_fields(ui, idle),
+            "probe" => {
+                // 标签、复选框与间距约占 240px，其余按 3:2 分给探针与芯片
+                let rest = (budget - 240.0).max(235.0);
+                let device = vw(27.0, 190.0, 360.0).min(rest * 0.55).max(110.0);
+                let chip = vw(18.0, 145.0, 220.0).min(rest - device).max(125.0);
+                self.probe_fields(ui, idle, device, chip);
+            }
+            _ => {
+                let device = vw(23.0, 160.0, 300.0).min(budget - 230.0).max(110.0);
+                self.serial_fields(ui, idle, device);
+            }
+        }
+    }
+
+    fn connection_actions(&mut self, ui: &mut egui::Ui) {
+        let open = self.config.preset_panel_visible;
+        if icon_button_sized(
+            ui,
+            if open { "chevron-right" } else { "chevron-left" },
+            "扩展发送",
+            false,
+            open,
+            30.0,
+        )
+        .clicked()
+        {
+            self.config.preset_panel_visible = !open;
+        }
+        if icon_button(ui, "help", "关于 Z_COM", false).clicked() {
+            self.about_open = true;
+        }
+        if icon_button(ui, "settings", "更多设置", false).clicked() {
+            self.draft = self.config.clone();
+            self.settings_open = true;
+            self.tasks
+                .send(Task::CheckSdk(self.draft.jlink_sdk_path.clone()));
+        }
+        let (icon, label, fill, border) = if self.connected {
+            ("unlink", "断开", palette::GREEN, palette::GREEN_BORDER)
+        } else if self.connecting.is_some() {
+            ("stop", "取消", palette::AMBER, palette::AMBER_BORDER)
+        } else {
+            ("link", "连接", palette::RED, palette::RED_BORDER)
+        };
+        if command_button(ui, icon, label, fill, border, 30.0).clicked() {
+            self.connect();
+        }
     }
 
     fn device_select(&mut self, ui: &mut egui::Ui, label: &str, width: f32) {
@@ -770,6 +832,7 @@ impl App {
                     });
                 },
             );
+            ui.add_space(7.0);
             check_styled(
                 ui,
                 &mut self.config.probe_reset,
@@ -1976,7 +2039,11 @@ impl eframe::App for App {
             }
         }
         egui::TopBottomPanel::top("connection")
-            .exact_height(44.0)
+            .exact_height(if compact_connection_bar(ctx.screen_rect().width()) {
+                74.0
+            } else {
+                44.0
+            })
             .frame(
                 egui::Frame::new()
                     .fill(palette::BAR)
@@ -2170,6 +2237,10 @@ mod palette {
     pub const MUTED: Color32 = Color32::from_rgb(0x66, 0x70, 0x78);
 }
 
+fn compact_connection_bar(width: f32) -> bool {
+    width <= 1100.0
+}
+
 /// 原版常用波特率列表
 const DEFAULT_BAUDRATES: &[&str] = &[
     "110", "300", "600", "1200", "2400", "4800", "9600", "14400", "19200", "38400", "56000",
@@ -2194,12 +2265,21 @@ fn select_box(
         ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::WHITE;
         ui.visuals_mut().widgets.inactive.bg_stroke =
             egui::Stroke::new(1.0_f32, palette::BAR_LINE);
-        egui::ComboBox::from_id_salt(id)
-            .width(width)
-            .height(320.0)
-            .truncate()
-            .selected_text(selected)
-            .show_ui(ui, contents);
+        // ComboBox::width 只是最小宽度，选中文本按可用宽度截断；
+        // 因此放进扣除左右内边距后的定宽子区域，使总宽度恰好为 `width`
+        let padding = ui.spacing().button_padding.x;
+        ui.allocate_ui_with_layout(
+            egui::vec2(width - padding * 2.0, 30.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                egui::ComboBox::from_id_salt(id)
+                    .width(width)
+                    .height(320.0)
+                    .truncate()
+                    .selected_text(selected)
+                    .show_ui(ui, contents);
+            },
+        );
     });
 }
 
