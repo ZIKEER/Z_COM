@@ -8,9 +8,15 @@ struct Position {
     character: usize,
 }
 
+const LINE_HEIGHT: f32 = 18.0;
+
 #[derive(Default)]
 pub(crate) struct ReceiveView {
     first_line: u64,
+    /// 每行自动换行后的高度，首项对应 `heights_first` 行
+    heights: VecDeque<f32>,
+    heights_first: u64,
+    layout_key: Option<(i32, bool)>,
     anchor: Option<Position>,
     cursor: Option<Position>,
     dragging: bool,
@@ -73,6 +79,38 @@ impl ReceiveView {
         Some((anchor.min(cursor), anchor.max(cursor)))
     }
 
+    fn galley(
+        ui: &egui::Ui,
+        line: &Line,
+        ansi: bool,
+        width: f32,
+    ) -> std::sync::Arc<egui::Galley> {
+        let mut job = crate::native_terminal::layout(line, ansi);
+        job.wrap.max_width = width;
+        ui.fonts(|fonts| fonts.layout_job(job))
+    }
+
+    /// 同步每行换行后的高度缓存；宽度或 ANSI 开关变化时整体重算
+    fn sync_heights(&mut self, ui: &egui::Ui, lines: &VecDeque<Line>, width: f32, ansi: bool) {
+        let key = (width.round() as i32, ansi);
+        if self.layout_key != Some(key) {
+            self.layout_key = Some(key);
+            self.heights.clear();
+        }
+        while self.heights_first < self.first_line && !self.heights.is_empty() {
+            self.heights.pop_front();
+            self.heights_first += 1;
+        }
+        if self.heights.is_empty() {
+            self.heights_first = self.first_line;
+        }
+        self.heights.truncate(lines.len());
+        for line in lines.iter().skip(self.heights.len()) {
+            let height = Self::galley(ui, line, ansi, width).size().y;
+            self.heights.push_back(height.max(LINE_HEIGHT));
+        }
+    }
+
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -82,25 +120,44 @@ impl ReceiveView {
     ) -> bool {
         let context = ui.ctx().clone();
         let mut clear = false;
-        let viewport = ui.clip_rect();
-        egui::ScrollArea::both()
+        let viewport = ui.available_rect_before_wrap();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
             .stick_to_bottom(auto_scroll && !self.dragging)
-            .show_rows(ui, 18.0, lines.len(), |ui, range| {
-                for index in range {
-                    let job = crate::native_terminal::layout(&lines[index], *ansi);
-                    let galley = ui.fonts(|fonts| fonts.layout_job(job));
-                    let (rect, response) = ui.allocate_exact_size(
-                        egui::vec2(galley.size().x.max(ui.available_width()), 18.0),
-                        Sense::click_and_drag(),
+            .show_viewport(ui, |ui, visible| {
+                let width = ui.available_width().max(40.0);
+                self.sync_heights(ui, lines, width, *ansi);
+                let origin = ui.max_rect().min;
+                let total: f32 = self.heights.iter().sum();
+                ui.set_min_size(egui::vec2(width, total));
+                let pointer = context.input(|input| input.pointer.interact_pos());
+                let mut top = 0.0;
+                let heights: Vec<f32> = self.heights.iter().copied().collect();
+                for (index, height) in heights.into_iter().enumerate() {
+                    let bottom = top + height;
+                    if bottom < visible.top() {
+                        top = bottom;
+                        continue;
+                    }
+                    if top > visible.bottom() {
+                        break;
+                    }
+                    let galley = Self::galley(ui, &lines[index], *ansi, width);
+                    let rect = egui::Rect::from_min_size(
+                        origin + egui::vec2(0.0, top),
+                        egui::vec2(width, height),
                     );
+                    top = bottom;
                     let line_number = self.first_line + index as u64;
-                    let pointer = context.input(|input| input.pointer.interact_pos());
+                    let response =
+                        ui.interact(rect, ui.id().with(line_number), Sense::click_and_drag());
+                    let position_at = |pointer: egui::Pos2| Position {
+                        line: line_number,
+                        character: galley.cursor_from_pos(pointer - rect.min).ccursor.index,
+                    };
                     if response.drag_started() || response.clicked() {
                         if let Some(pointer) = pointer {
-                            let position = Position {
-                                line: line_number,
-                                character: galley.cursor_from_pos(pointer - rect.min).ccursor.index,
-                            };
+                            let position = position_at(pointer);
                             if !context.input(|input| input.modifiers.shift)
                                 || self.anchor.is_none()
                             {
@@ -114,13 +171,7 @@ impl ReceiveView {
                     if self.dragging && context.input(|input| input.pointer.primary_down()) {
                         if let Some(pointer) = pointer {
                             if pointer.y >= rect.top() && pointer.y < rect.bottom() {
-                                self.cursor = Some(Position {
-                                    line: line_number,
-                                    character: galley
-                                        .cursor_from_pos(pointer - rect.min)
-                                        .ccursor
-                                        .index,
-                                });
+                                self.cursor = Some(position_at(pointer));
                             }
                         }
                     }
@@ -134,26 +185,32 @@ impl ReceiveView {
                             let finish = if line_number == end.line {
                                 end.character
                             } else {
-                                galley.text().chars().count()
+                                usize::MAX
                             };
-                            let begin_x = galley
-                                .pos_from_ccursor(egui::text::CCursor::new(begin))
-                                .left();
-                            let finish_x = galley
-                                .pos_from_ccursor(egui::text::CCursor::new(finish))
-                                .left();
-                            ui.painter().rect_filled(
-                                egui::Rect::from_min_max(
-                                    rect.min + egui::vec2(begin_x, 0.0),
-                                    rect.min + egui::vec2(finish_x.max(begin_x), 18.0),
-                                ),
-                                0.0,
-                                Color32::from_rgb(190, 220, 255),
-                            );
+                            // 换行后按每一显示行分别绘制选区
+                            let mut row_start = 0;
+                            for row in &galley.rows {
+                                let row_end = row_start + row.char_count_excluding_newline();
+                                let from = begin.max(row_start);
+                                let to = finish.min(row_end);
+                                if from < to {
+                                    let left = row.x_offset(from - row_start);
+                                    let right = row.x_offset(to - row_start);
+                                    ui.painter().rect_filled(
+                                        egui::Rect::from_min_max(
+                                            rect.min + egui::vec2(left, row.min_y()),
+                                            rect.min + egui::vec2(right, row.max_y()),
+                                        ),
+                                        0.0,
+                                        Color32::from_rgb(190, 220, 255),
+                                    );
+                                }
+                                row_start += row.char_count_including_newline();
+                            }
                         }
                     }
                     ui.painter()
-                        .galley(rect.min, galley, Color32::from_gray(32));
+                        .galley(rect.min, galley.clone(), Color32::from_gray(32));
                     response.context_menu(|ui| {
                         if ui.button("复制选区").clicked() {
                             context.copy_text(self.selected(lines));
@@ -177,12 +234,12 @@ impl ReceiveView {
                     });
                 }
                 if self.dragging {
-                    if let Some(pointer) = context.input(|input| input.pointer.interact_pos()) {
+                    if let Some(pointer) = pointer {
                         if pointer.y < viewport.top() {
-                            ui.scroll_with_delta(egui::vec2(0.0, 18.0));
+                            ui.scroll_with_delta(egui::vec2(0.0, LINE_HEIGHT));
                         }
                         if pointer.y > viewport.bottom() {
-                            ui.scroll_with_delta(egui::vec2(0.0, -18.0));
+                            ui.scroll_with_delta(egui::vec2(0.0, -LINE_HEIGHT));
                         }
                     }
                 }
