@@ -724,9 +724,11 @@ impl App {
             );
             field_label(ui, "地址");
             let server = self.config.socket_role == "Server";
-            let response = ui.add_sized(
-                [150.0, 30.0],
+            let (field, _) = ui.allocate_exact_size(egui::vec2(150.0, 30.0), egui::Sense::hover());
+            let response = ui.put(
+                field,
                 egui::TextEdit::singleline(&mut self.config.socket_host)
+                    .desired_width(f32::INFINITY)
                     .margin(egui::Margin {
                         left: 7,
                         right: if server { 32 } else { 7 },
@@ -739,8 +741,8 @@ impl App {
                 let popup = ui.make_persistent_id("local-addresses");
                 let open = ui.memory(|memory| memory.is_popup_open(popup));
                 let toggle = egui::Rect::from_min_max(
-                    egui::pos2(response.rect.right() - 29.0, response.rect.top() + 1.0),
-                    response.rect.right_bottom() - egui::vec2(1.0, 1.0),
+                    egui::pos2(field.right() - 29.0, field.top() + 1.0),
+                    field.right_bottom() - egui::vec2(1.0, 1.0),
                 );
                 if ui
                     .put(toggle, |ui: &mut egui::Ui| {
@@ -753,7 +755,7 @@ impl App {
                 egui::popup_below_widget(
                     ui,
                     popup,
-                    &response,
+                    &response.clone().with_new_rect(field),
                     egui::PopupCloseBehavior::CloseOnClick,
                     |ui| {
                         ui.set_min_width(150.0);
@@ -784,9 +786,12 @@ impl App {
             field_label(ui, "目标芯片");
             // 可输入的下拉框：输入框右侧附带展开按钮，对应原版 `.chip-combobox`
             let popup = ui.make_persistent_id("probe-chip-options");
-            let response = ui.add_sized(
-                [chip_width, 30.0],
+            // TextEdit 返回的 response.rect 不含内边距，因此先占定宽区域，再据此放置输入框与展开按钮
+            let (field, _) = ui.allocate_exact_size(egui::vec2(chip_width, 30.0), egui::Sense::hover());
+            let response = ui.put(
+                field,
                 egui::TextEdit::singleline(&mut self.config.probe_chip)
+                    .desired_width(f32::INFINITY)
                     .hint_text("输入或选择目标芯片")
                     .margin(egui::Margin {
                         left: 7,
@@ -798,8 +803,8 @@ impl App {
             );
             let open = ui.memory(|memory| memory.is_popup_open(popup));
             let toggle = egui::Rect::from_min_max(
-                egui::pos2(response.rect.right() - 29.0, response.rect.top() + 1.0),
-                response.rect.right_bottom() - egui::vec2(1.0, 1.0),
+                egui::pos2(field.right() - 29.0, field.top() + 1.0),
+                field.right_bottom() - egui::vec2(1.0, 1.0),
             );
             if ui
                 .put(toggle, |ui: &mut egui::Ui| {
@@ -812,7 +817,7 @@ impl App {
             egui::popup_below_widget(
                 ui,
                 popup,
-                &response,
+                &response.clone().with_new_rect(field),
                 egui::PopupCloseBehavior::CloseOnClick,
                 |ui| {
                     ui.set_min_width(chip_width);
