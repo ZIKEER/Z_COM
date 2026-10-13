@@ -56,7 +56,9 @@ impl Logger {
         self.switch_date_if_needed();
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let _ = writeln!(self.writer, "[{timestamp}] {message}");
-        self.maintain();
+        // 连接、断开、错误等事件立即落盘，避免进程异常退出时丢失排障信息
+        let _ = self.writer.flush();
+        self.last_flush = Instant::now();
     }
 
     fn maintain(&mut self) {
