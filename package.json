@@ -10,9 +10,12 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "version:set": "node scripts/set-version.mjs",
-    "build:raw": "tauri build --no-bundle",
+    "build:raw": "cargo build --release --manifest-path src-tauri/Cargo.toml --locked",
+    "dev:native": "cargo run --manifest-path src-tauri/Cargo.toml --locked",
+    "check:native": "cargo check --manifest-path src-tauri/Cargo.toml --locked",
     "pack": "node scripts/pack.mjs",
     "pack:win": "node scripts/pack.mjs --windows",
+    "pack:native": "node scripts/pack.mjs --output-root=dist/native",
     "pack:release": "node scripts/pack-release.mjs",
     "tauri": "tauri"
   },

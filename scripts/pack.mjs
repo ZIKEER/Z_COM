@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const windowsOnly = process.argv.includes("--windows");
+const outputRoot = process.argv.find((argument) => argument.startsWith("--output-root="))?.slice("--output-root=".length);
 
 if (windowsOnly && process.platform !== "win32") {
   throw new Error("pack:win 只能在 Windows 环境执行");
@@ -34,7 +35,7 @@ const sourceExecutable = path.join(rootDir, "src-tauri", "target", "release", `z
 
 const architecture = { x64: "x86_64", arm64: "arm64" }[process.arch] ?? process.arch;
 const platformName = process.platform === "darwin" ? "macos" : process.platform;
-const distRoot = process.platform === "win32"
+const distRoot = outputRoot ? path.resolve(rootDir, outputRoot) : process.platform === "win32"
   ? path.join(rootDir, "dist")
   : path.join(rootDir, "dist", `${platformName}-${architecture}`);
 const outputDir = path.join(distRoot, appName);
@@ -44,8 +45,7 @@ console.log(`\nZ_COM Rust 便携版打包`);
 console.log(`版本：${versionName}`);
 console.log(`输出：${outputDir}\n`);
 
-const tauriCli = path.join(rootDir, "node_modules", "@tauri-apps", "cli", "tauri.js");
-const build = spawnSync(process.execPath, [tauriCli, "build", "--no-bundle"], {
+const build = spawnSync("cargo", ["build", "--release", "--manifest-path", "src-tauri/Cargo.toml", "--locked"], {
   cwd: rootDir,
   stdio: "inherit",
 });

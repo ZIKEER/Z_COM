@@ -72,8 +72,7 @@ if (!platform || process.arch !== "x64") {
   throw new Error(`发布脚本当前只支持 Windows/Linux x86_64，当前环境为 ${process.platform}/${process.arch}`);
 }
 
-const tauriCli = path.join(rootDir, "node_modules", "@tauri-apps", "cli", "tauri.js");
-const build = spawnSync(process.execPath, [tauriCli, "build", "--no-bundle"], {
+const build = spawnSync("cargo", ["build", "--release", "--manifest-path", "src-tauri/Cargo.toml", "--locked"], {
   cwd: rootDir,
   stdio: "inherit",
 });
