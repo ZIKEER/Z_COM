@@ -977,7 +977,7 @@ impl App {
                 clear |= icon_button(ui, "clear", "清空报文并重置收发计数", true).clicked();
                 let plot = ui.add(
                     egui::Button::new(
-                        egui::RichText::new("曲线")
+                        egui::RichText::new("图表")
                             .size(12.0)
                             .color(Color32::from_rgb(0x3f, 0x4b, 0x45)),
                     )
@@ -986,7 +986,7 @@ impl App {
                     .corner_radius(3.0)
                     .min_size(egui::vec2(0.0, 24.0)),
                 );
-                if plot.on_hover_text("打开独立数据曲线 / 表格窗口").clicked() {
+                if plot.on_hover_text("打开独立图表窗口（曲线 / 表格）").clicked() {
                     self.plot.open = true;
                 }
             });
@@ -2173,7 +2173,7 @@ impl eframe::App for App {
             ctx.show_viewport_immediate(
                 egui::ViewportId::from_hash_of("plot"),
                 egui::ViewportBuilder::default()
-                    .with_title("数据曲线")
+                    .with_title("数据图表")
                     .with_inner_size([900.0, 560.0]),
                 |context, _| {
                     if context.input(|input| input.viewport().close_requested()) {

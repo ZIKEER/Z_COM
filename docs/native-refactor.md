@@ -26,7 +26,7 @@
 - Windows 原版/原生版截图已对比，调整接收背景、顶部双行布局、连接按钮、图标和分隔面板。
 - 以原版布局重做分段按钮、图标按钮、设置分组、关于卡片、许可标签页和波特率弹窗；曲线规则使用居中遮罩弹窗。截图保存在本地 `artifacts/ui/`，字体和绘图库的细节仍与 WebView 原版存在差异。
 
-调试构建支持 `--preview=about/settings/legal/baud/extended/serial/socket/probe/plot/rules`（每次选择一个值），用于直接打开界面截图；预览不会保存配置，发布版不启用此入口。独立曲线窗口截图需给 `scripts/capture-window.ps1` 传入 `-Title 数据曲线`。
+调试构建支持 `--preview=about/settings/legal/baud/extended/serial/socket/probe/plot/rules`（每次选择一个值），用于直接打开界面截图；预览不会保存配置，发布版不启用此入口。独立曲线窗口截图需给 `scripts/capture-window.ps1` 传入 `-Title 数据图表`。
 
 ## 仍需实机验收
 
