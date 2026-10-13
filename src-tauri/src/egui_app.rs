@@ -1685,7 +1685,11 @@ impl eframe::App for App {
                 .unwrap_or_else(|error| error.into_inner())
                 .disconnect();
             self.connecting = None;
-            self.error = "连接超时".into();
+            self.error = if self.config.transport_mode == "probe" {
+                "连接超时：调试探针无响应，可能正被其他程序（其他 Z_COM 实例、Keil、J-Link Commander 等）占用。串口等其他连接不受影响".into()
+            } else {
+                "连接超时".into()
+            };
         }
         let before = (self.config.clone(), self.extended.clone());
         if self.auto_send && self.connected && Instant::now() >= self.next_auto {
