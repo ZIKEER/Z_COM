@@ -211,6 +211,14 @@ impl ReceiveView {
                     }
                     ui.painter()
                         .galley(rect.min, galley.clone(), Color32::from_gray(32));
+                    let mut overlay = crate::native_terminal::bold_overlay(&lines[index], *ansi);
+                    overlay.wrap.max_width = width;
+                    let overlay = ui.fonts(|fonts| fonts.layout_job(overlay));
+                    ui.painter().galley(
+                        rect.min + egui::vec2(0.6, 0.0),
+                        overlay,
+                        Color32::TRANSPARENT,
+                    );
                     response.context_menu(|ui| {
                         if ui.button("复制选区").clicked() {
                             context.copy_text(self.selected(lines));

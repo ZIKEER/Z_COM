@@ -19,6 +19,11 @@ pub(crate) enum Style {
 }
 
 impl Style {
+    /// 原版 CSS 中 font-weight ≥ 600 的片段
+    fn bold(self) -> bool {
+        !matches!(self, Self::Data)
+    }
+
     fn color(self) -> Color32 {
         match self {
             Self::Timestamp => Color32::from_rgb(0x00, 0x8b, 0x8b),
@@ -178,6 +183,16 @@ fn split_lines(content: &str) -> Vec<String> {
 }
 
 pub(crate) fn layout(line: &Line, ansi: bool) -> LayoutJob {
+    layout_job(line, ansi, false)
+}
+
+/// 粗体叠加层：与 `layout` 字形位置完全一致，仅粗体片段可见。
+/// 等宽字体的粗体字宽不同会破坏对齐，因此以偏移重绘模拟原版的 font-weight。
+pub(crate) fn bold_overlay(line: &Line, ansi: bool) -> LayoutJob {
+    layout_job(line, ansi, true)
+}
+
+fn layout_job(line: &Line, ansi: bool, overlay: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
     job.wrap.max_width = f32::INFINITY;
     for (style, text) in &line.spans {
@@ -187,10 +202,22 @@ pub(crate) fn layout(line: &Line, ansi: bool) -> LayoutJob {
             line_height: Some(18.0),
             ..Default::default()
         };
+        let first = job.sections.len();
         if *style == Style::Data {
             append_ansi(&mut job, text, format, ansi);
         } else {
             job.append(text, 0.0, format);
+        }
+        if overlay && !style.bold() {
+            for section in &mut job.sections[first..] {
+                section.format.color = Color32::TRANSPARENT;
+                section.format.background = Color32::TRANSPARENT;
+                section.format.underline = Stroke::NONE;
+            }
+        } else if overlay {
+            for section in &mut job.sections[first..] {
+                section.format.background = Color32::TRANSPARENT;
+            }
         }
     }
     job
