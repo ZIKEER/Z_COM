@@ -127,52 +127,7 @@ impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Result<Self, String> {
         cc.egui_ctx.set_theme(egui::Theme::Light);
         cc.egui_ctx.set_visuals(egui::Visuals::light());
-        let mut fonts = egui::FontDefinitions::default();
-        let mut database = fontdb::Database::new();
-        database.load_system_fonts();
-        let face = database.query(&fontdb::Query {
-            families: &[
-                fontdb::Family::Name("SimSun"),
-                fontdb::Family::Name("Songti SC"),
-                fontdb::Family::Name("Noto Serif CJK SC"),
-                fontdb::Family::Name("Microsoft YaHei UI"),
-                fontdb::Family::Name("Microsoft YaHei"),
-                fontdb::Family::Name("PingFang SC"),
-                fontdb::Family::Name("Noto Sans CJK SC"),
-                fontdb::Family::SansSerif,
-            ],
-            ..Default::default()
-        });
-        if let Some(face) = face {
-            database.with_face_data(face, |data, index| {
-                let mut font = egui::FontData::from_owned(data.to_vec());
-                font.index = index;
-                fonts.font_data.insert("cjk".into(), Arc::new(font));
-                fonts
-                    .families
-                    .get_mut(&egui::FontFamily::Proportional)
-                    .unwrap()
-                    .insert(0, "cjk".into());
-                fonts
-                    .families
-                    .get_mut(&egui::FontFamily::Monospace)
-                    .unwrap()
-                    .push("cjk".into());
-            });
-        }
-        if cfg!(target_os = "windows") {
-            let font_directory =
-                PathBuf::from(std::env::var_os("WINDIR").unwrap_or_else(|| "C:/Windows".into()))
-                    .join("Fonts");
-            if let Ok(data) = std::fs::read(font_directory.join("simsun.ttc")) {
-                fonts
-                    .font_data
-                    .insert("song".into(), Arc::new(egui::FontData::from_owned(data)));
-                for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-                    fonts.families.insert(family, vec!["song".into()]);
-                }
-            }
-        }
+        let fonts = font_definitions();
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.style_mut(|style| {
             for text_style in [egui::TextStyle::Body, egui::TextStyle::Button] {
@@ -2111,6 +2066,64 @@ fn option_label(value: &str) -> &str {
         "Server" => "服务端",
         _ => value,
     }
+}
+
+/// 与原 WebView 版本的 CSS 字体栈保持一致：界面用 Segoe UI + 微软雅黑 UI，接收区用 Cascadia Mono / Consolas。
+/// 末尾的 Segoe UI Symbol 等提供 ␍␊◆ 等控制图符，避免显示为方块。
+fn font_definitions() -> egui::FontDefinitions {
+    const UI: &[&str] = &["Segoe UI", "SF Pro Text", "Noto Sans", "DejaVu Sans"];
+    const MONO: &[&str] = &[
+        "Cascadia Mono",
+        "Consolas",
+        "Menlo",
+        "DejaVu Sans Mono",
+        "Noto Sans Mono",
+    ];
+    const CJK: &[&str] = &[
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+        "PingFang SC",
+        "Noto Sans CJK SC",
+        "WenQuanYi Micro Hei",
+    ];
+    const SYMBOL: &[&str] = &["Segoe UI Symbol", "Apple Symbols", "DejaVu Sans"];
+
+    let mut database = fontdb::Database::new();
+    database.load_system_fonts();
+    let mut fonts = egui::FontDefinitions::default();
+    let mut load = |key: &str, families: &[&str]| -> Option<String> {
+        let names: Vec<_> = families
+            .iter()
+            .map(|name| fontdb::Family::Name(name))
+            .collect();
+        let face = database.query(&fontdb::Query {
+            families: &names,
+            ..Default::default()
+        })?;
+        database.with_face_data(face, |data, index| {
+            let mut font = egui::FontData::from_owned(data.to_vec());
+            font.index = index;
+            fonts.font_data.insert(key.into(), Arc::new(font));
+        })?;
+        Some(key.into())
+    };
+    let ui = load("ui", UI);
+    let mono = load("mono", MONO);
+    let cjk = load("cjk", CJK);
+    let symbol = load("symbol", SYMBOL);
+    for (family, primary) in [
+        (egui::FontFamily::Proportional, ui),
+        (egui::FontFamily::Monospace, mono),
+    ] {
+        let defaults = fonts.families.remove(&family).unwrap_or_default();
+        let chain = [primary, cjk.clone(), symbol.clone()]
+            .into_iter()
+            .flatten()
+            .chain(defaults)
+            .collect();
+        fonts.families.insert(family, chain);
+    }
+    fonts
 }
 
 fn open_directory(path: &std::path::Path) -> std::io::Result<()> {
