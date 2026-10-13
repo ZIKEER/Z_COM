@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub selected_probe: String,
     pub window_width: u32,
     pub window_height: u32,
+    /// 曲线窗口显示方式：plot / table / both
+    pub plot_view: String,
 }
 
 impl Default for AppConfig {
@@ -75,6 +77,7 @@ impl Default for AppConfig {
             selected_probe: String::new(),
             window_width: 1080,
             window_height: 760,
+            plot_view: "plot".into(),
         }
     }
 }

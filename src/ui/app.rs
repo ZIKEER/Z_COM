@@ -241,6 +241,7 @@ impl App {
         app.plot.template =
             std::fs::read_to_string(app.directory.join("plot-template.txt")).unwrap_or_default();
         let _ = app.plot.compile();
+        app.plot.view = app.config.plot_view.clone();
         if cfg!(debug_assertions) {
             if let Some(preview) = std::env::args()
                 .find_map(|argument| argument.strip_prefix("--preview=").map(str::to_owned))
@@ -985,7 +986,7 @@ impl App {
                     .corner_radius(3.0)
                     .min_size(egui::vec2(0.0, 24.0)),
                 );
-                if plot.on_hover_text("打开独立数据曲线窗口").clicked() {
+                if plot.on_hover_text("打开独立数据曲线 / 表格窗口").clicked() {
                     self.plot.open = true;
                 }
             });
@@ -2182,6 +2183,9 @@ impl eframe::App for App {
                 },
             );
             self.plot.open = plot_open;
+            if self.config.plot_view != self.plot.view {
+                self.config.plot_view = self.plot.view.clone();
+            }
         }
         if before.0 != self.config || before.1 != self.extended {
             self.dirty = Some(Instant::now());
@@ -2438,7 +2442,7 @@ fn pane_toolbar(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)) {
 }
 
 /// 分段切换按钮组，对应原版 `.mode-switch`；`compact` 对应 `.mode-switch.compact`
-fn mode_switch(
+pub(crate) fn mode_switch(
     ui: &mut egui::Ui,
     value: &mut String,
     options: &[(&str, &str)],
