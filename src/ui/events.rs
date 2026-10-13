@@ -10,6 +10,8 @@ const MAX_PENDING_EVENTS: usize = 1024;
 pub(crate) struct TimedEvent {
     pub event: TransportEvent,
     pub timestamp: String,
+    /// 接收时刻，图表按此绘制时间轴
+    pub at: chrono::NaiveDateTime,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -40,9 +42,11 @@ impl Inbox {
             }
         }
         pending.bytes += event.bytes.len();
+        let now = chrono::Local::now();
         pending.events.push_back(TimedEvent {
             event,
-            timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
+            timestamp: now.format("%H:%M:%S%.3f").to_string(),
+            at: now.naive_local(),
         });
         while pending.bytes > MAX_PENDING_BYTES || pending.events.len() > MAX_PENDING_EVENTS {
             let index = pending

@@ -240,7 +240,10 @@ impl App {
         app.error = crate::update_apply::take_startup_error();
         app.plot.template =
             std::fs::read_to_string(app.directory.join("plot-template.txt")).unwrap_or_default();
-        let _ = app.plot.compile();
+        let _ = app.plot.compile(None);
+        if let Some(root) = app.directory.parent() {
+            app.plot.log_directory = root.join("logs");
+        }
         app.plot.view = app.config.plot_view.clone();
         if cfg!(debug_assertions) {
             if let Some(preview) = std::env::args()
@@ -433,7 +436,7 @@ impl App {
             let stamp = timed.timestamp;
             if event.kind == "data" {
                 if event.direction == "received" {
-                    self.plot.consume(&event.bytes);
+                    self.plot.consume(&event.bytes, timed.at);
                 }
                 self.append(crate::ui::terminal::data_lines(
                     &stamp,
@@ -2520,7 +2523,7 @@ pub(crate) fn mode_switch(
 }
 
 /// 复选框，选中时为强调色底白色对勾（与原版 Chromium 原生复选框一致）
-fn check(ui: &mut egui::Ui, value: &mut bool, label: &str) -> egui::Response {
+pub(crate) fn check(ui: &mut egui::Ui, value: &mut bool, label: &str) -> egui::Response {
     check_styled(ui, value, label, palette::ACCENT, 14.0)
 }
 
