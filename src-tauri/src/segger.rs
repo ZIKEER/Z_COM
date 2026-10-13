@@ -435,7 +435,7 @@ pub(crate) fn run_rtt(
     let access = JLINK_ACCESS.get_or_init(|| Mutex::new(()));
     let _guard = access
         .try_lock()
-        .map_err(|_| "当前程序已有 J-Link 会话正在使用".to_string())?;
+        .map_err(|_| "当前程序已有 J-Link 会话正在使用或仍在等待驱动返回，请稍后重试".to_string())?;
     let mut session = JLinkSession::new(
         serial_number,
         &request.probe_chip,

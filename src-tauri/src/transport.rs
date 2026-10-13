@@ -1,10 +1,11 @@
 use std::{
+    collections::HashSet,
     fs,
     io::{self, Read, Write},
     net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, Sender, TryRecvError},
     },
@@ -38,19 +39,25 @@ struct Worker {
     is_serial: bool,
     app: AppHandle,
     stopped: Arc<AtomicBool>,
+    resource: String,
 }
 
+/// `releasing` 记录断开后仍在等待工作线程退出的设备。按设备区分，避免某个探针驱动长时间阻塞时连带拦截串口、Socket 等其他连接。
+#[derive(Default)]
 pub struct TransportManager {
     worker: Option<Worker>,
-    cleanup_in_progress: Arc<AtomicBool>,
+    releasing: Arc<Mutex<HashSet<String>>>,
 }
 
-impl Default for TransportManager {
-    fn default() -> Self {
-        Self {
-            worker: None,
-            cleanup_in_progress: Arc::new(AtomicBool::new(false)),
-        }
+fn resource_key(request: &ConnectRequest) -> String {
+    match request.transport.as_str() {
+        // J-Link DLL 在进程内全局共享，所有 J-Link 共用同一个资源
+        "probe" if request.device_id.starts_with("segger:") => "segger".into(),
+        "socket" => format!(
+            "socket:{}:{}:{}:{}",
+            request.socket_protocol, request.socket_role, request.socket_host, request.socket_port
+        ),
+        transport => format!("{transport}:{}", request.device_id),
     }
 }
 
@@ -68,8 +75,18 @@ impl TransportManager {
         if self.worker.is_some() {
             return Err("当前已有活动连接，请先断开".to_string());
         }
-        if self.cleanup_in_progress.load(Ordering::Acquire) {
-            return Err("上一次连接正在释放资源，请稍后重试".to_string());
+        let resource = resource_key(&request);
+        if self
+            .releasing
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .contains(&resource)
+        {
+            return Err(if resource == "segger" {
+                "上一次 J-Link 连接仍在等待驱动返回，探针可能被其他程序（其他 Z_COM 实例、Keil、J-Link Commander 等）占用，请关闭后重试".to_string()
+            } else {
+                "该设备上一次连接正在释放资源，请稍后重试".to_string()
+            });
         }
         let is_serial = request.transport == "serial";
         let (commands, receiver) = mpsc::channel();
@@ -107,6 +124,7 @@ impl TransportManager {
             is_serial,
             app: worker_app,
             stopped,
+            resource,
         });
         Ok(())
     }
@@ -140,7 +158,11 @@ impl TransportManager {
     pub fn disconnect(&mut self) {
         if let Some(worker) = self.worker.take() {
             worker.stopped.store(true, Ordering::Release);
-            self.cleanup_in_progress.store(true, Ordering::Release);
+            let resource = worker.resource.clone();
+            self.releasing
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(resource.clone());
             let _ = worker.commands.send(WorkerCommand::Stop);
             emit(
                 &worker.app,
@@ -149,16 +171,23 @@ impl TransportManager {
                 Vec::new(),
                 "连接已关闭",
             );
-            let cleanup_in_progress = Arc::clone(&self.cleanup_in_progress);
+            let releasing = Arc::clone(&self.releasing);
+            let release_key = resource.clone();
             if thread::Builder::new()
                 .name("transport-cleanup".to_string())
                 .spawn(move || {
                     let _ = worker.handle.join();
-                    cleanup_in_progress.store(false, Ordering::Release);
+                    releasing
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .remove(&release_key);
                 })
                 .is_err()
             {
-                self.cleanup_in_progress.store(false, Ordering::Release);
+                self.releasing
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .remove(&resource);
             }
         }
     }
@@ -1071,6 +1100,24 @@ flash_algorithms: []
                 return event;
             }
         }
+    }
+
+    #[test]
+    fn releasing_probe_does_not_block_other_transports() {
+        let mut manager = TransportManager::default();
+        manager.releasing.lock().unwrap().insert("segger".into());
+        let sink = crate::event_sink::EventSink::new(std::path::PathBuf::new(), |_| {});
+        let mut probe = socket_request(0, "TCP", "Client");
+        probe.transport = "probe".into();
+        probe.device_id = "segger:123".into();
+        assert!(manager.connect(sink.clone(), probe).unwrap_err().contains("J-Link"));
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        manager
+            .connect(sink, socket_request(port, "TCP", "Client"))
+            .unwrap();
+        manager.disconnect();
     }
 
     #[test]
