@@ -5,7 +5,7 @@ remain subject to their respective licenses; the Apache License 2.0 for Z_COM
 does not replace or modify those licenses.
 
 Exact resolved versions are recorded in `package-lock.json` and
-`src-tauri/Cargo.lock`. Source code and license texts for Rust packages are
+`Cargo.lock`. Source code and license texts for Rust packages are
 available from [crates.io](https://crates.io/) and their linked repositories;
 source code and license texts for JavaScript packages are available from
 [npm](https://www.npmjs.com/) and their linked repositories.
@@ -18,8 +18,6 @@ source code and license texts for JavaScript packages are available from
 | rfd and fontdb | MIT |
 | crossbeam-channel and regex | Apache-2.0 OR MIT |
 | image | Apache-2.0 OR MIT |
-
-The archived reference frontend uses Svelte/SvelteKit (MIT), Tauri (Apache-2.0 OR MIT), and Lucide (ISC); these are not linked into the native executable.
 
 | Component | License |
 | --- | --- |
@@ -41,7 +39,7 @@ Some resolved Rust components, including `serialport`, `cssparser`,
 `cssparser-macros`, `dtoa-short`, `option-ext` and `selectors`, are available
 under MPL-2.0. Z_COM does not modify or relicense those components. Their
 corresponding Source form can be obtained using the exact versions in
-`src-tauri/Cargo.lock` from crates.io and the upstream repositories identified
+`Cargo.lock` from crates.io and the upstream repositories identified
 in each package's Cargo metadata.
 
 Dependencies that offer multiple licenses are used under a permissive option

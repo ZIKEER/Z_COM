@@ -45,7 +45,7 @@ release-manifest.json
 }
 ```
 
-Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env!("CARGO_PKG_VERSION")` 为准，发布前必须确保 `package.json`、`package-lock.json`、`Cargo.toml` 和 `tauri.conf.json` 一致。
+Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env!("CARGO_PKG_VERSION")` 为准，发布前必须确保 `package.json`、`package-lock.json`、`Cargo.toml` 和 `Cargo.lock` 一致（使用 `npm run version:set` 统一修改）。
 
 ## 检查与选择
 
@@ -64,7 +64,7 @@ Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env
 ## 下载与校验
 
 - 更新文件写入主程序同级 `.update/`，因此绿色版目录必须可写。
-- 使用 64 KiB 数据块流式写入，并通过 Tauri event 显示百分比。
+- 使用 64 KiB 数据块流式写入，并通过后台任务回调在界面显示百分比。
 - 用户可以取消下载；临时 `.part` 文件会删除。
 - 下载过程中限制数据不能超过清单大小。
 - 完成后校验准确大小和 SHA-256，再原子移动为暂存文件。
@@ -96,9 +96,9 @@ Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env
 ## 模块边界
 
 ```text
-src-tauri/src/update.rs            Release 查询、清单解析、版本与镜像选择
-src-tauri/src/update_download.rs   下载、进度、取消、大小与 SHA-256 校验
-src-tauri/src/update_apply.rs      更新模式、备份、替换、回滚、重启和清理
+src/update.rs            Release 查询、清单解析、版本与镜像选择
+src/update_download.rs   下载、进度、取消、大小与 SHA-256 校验
+src/update_apply.rs      更新模式、备份、替换、回滚、重启和清理
 ```
 
 ## 已验证
@@ -107,7 +107,6 @@ src-tauri/src/update_apply.rs      更新模式、备份、替换、回滚、重
 - 两个来源的版本、文件名、大小和 SHA-256 一致性判断。
 - 21 项常规 Rust 测试和 1 项默认忽略的双源在线测试。
 - Windows 隔离目录中的 updater 备份、替换、新程序启动和清理流程。
-- Svelte 静态检查和生产构建。
 
 ## 待验收
 

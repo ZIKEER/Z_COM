@@ -32,15 +32,11 @@ await updateJson("package-lock.json", (data) => {
   data.packages[""].version = version;
 });
 
-await updateJson("src-tauri/tauri.conf.json", (data) => {
-  data.version = version;
-});
-
-const cargoTomlPath = path.join(rootDir, "src-tauri", "Cargo.toml");
+const cargoTomlPath = path.join(rootDir, "Cargo.toml");
 const cargoToml = await readFile(cargoTomlPath, "utf8");
 const cargoTomlVersion = /(^\[package\][\s\S]*?^version\s*=\s*")[^"]+("\s*$)/m;
 if (!cargoTomlVersion.test(cargoToml)) {
-  throw new Error("无法更新 src-tauri/Cargo.toml 的 package.version");
+  throw new Error("无法更新 Cargo.toml 的 package.version");
 }
 const updatedCargoToml = cargoToml.replace(
   cargoTomlVersion,
@@ -50,11 +46,11 @@ if (updatedCargoToml !== cargoToml) {
   await writeFile(cargoTomlPath, updatedCargoToml, "utf8");
 }
 
-const cargoLockPath = path.join(rootDir, "src-tauri", "Cargo.lock");
+const cargoLockPath = path.join(rootDir, "Cargo.lock");
 const cargoLock = await readFile(cargoLockPath, "utf8");
 const cargoLockVersion = /(\[\[package\]\]\r?\nname = "z-com"\r?\nversion = ")[^"]+("\r?\n)/;
 if (!cargoLockVersion.test(cargoLock)) {
-  throw new Error("无法更新 src-tauri/Cargo.lock 中的 z-com 版本");
+  throw new Error("无法更新 Cargo.lock 中的 z-com 版本");
 }
 const updatedCargoLock = cargoLock.replace(
   cargoLockVersion,
@@ -67,6 +63,5 @@ if (updatedCargoLock !== cargoLock) {
 console.log(`版本已统一更新为 ${version}：`);
 console.log("- package.json");
 console.log("- package-lock.json");
-console.log("- src-tauri/Cargo.toml");
-console.log("- src-tauri/Cargo.lock");
-console.log("- src-tauri/tauri.conf.json");
+console.log("- Cargo.toml");
+console.log("- Cargo.lock");

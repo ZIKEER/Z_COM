@@ -1,6 +1,6 @@
 # egui 原生重构验收
 
-此分支使用 egui/eframe + OpenGL 原生窗口；Cargo 运行依赖已移除 Tauri、wry 和 WebView。原 Svelte 页面保留用于界面对照，发布构建不使用前端。
+自 0.3.0 起使用 egui/eframe + OpenGL 原生窗口，已移除 Tauri、wry、WebView 和原 Svelte 前端。仓库根目录即 Cargo 工程，界面代码位于 `src/ui/`。
 
 ## 已迁移
 
@@ -14,7 +14,7 @@
 
 ## 性能设计
 
-Windows 界面与接收文本统一使用系统 `simsun.ttc` 宋体，不随程序分发字体。其他平台优先查找 Songti SC / Noto Serif CJK SC，再回退到已安装的中文字体。
+字体沿用原版 CSS 字体栈且不随程序分发：界面使用 Segoe UI + 微软雅黑 UI，接收区使用 Cascadia Mono / Consolas，Segoe UI Symbol 提供 ␍␊ 等控制图符；其他平台回退到 PingFang SC、Noto Sans CJK SC、DejaVu 等系统字体。
 
 空闲时等待事件；有数据时按约 30 FPS 刷新，每次处理事件最多占用 8 ms。显示积压最多 2 MiB 或 1024 个事件，超限仅裁剪待显示数据，不阻塞通信；原始通信仍写入日志，字节计数不丢失。接收历史保留 5000 行，只绘制可见行。
 
@@ -30,7 +30,7 @@ Windows 界面与接收文本统一使用系统 `simsun.ttc` 宋体，不随程�
 
 ## 仍需实机验收
 
-低配电脑持续高速串口、旧显卡/远程桌面、真实 J-Link/probe-rs RTT、Linux/macOS 桌面以及正式 Release 自更新。当前平台自动更新仅支持原有 Windows/Linux x86_64；macOS 不宣称可自动更新。ANSI 粗体目前使用加宽字距近似，不是独立粗体字形。
+低配电脑持续高速串口、旧显卡/远程桌面、真实 J-Link/probe-rs RTT、Linux/macOS 桌面以及正式 Release 自更新。当前平台自动更新仅支持原有 Windows/Linux x86_64；macOS 不宣称可自动更新。ANSI 粗体目前使用加宽字距近似；时间戳与标签的粗体以偏移重绘模拟，均不是独立粗体字形。
 
-运行：`cargo run --manifest-path src-tauri/Cargo.toml --locked`。
-打包：`npm run pack:native` 输出到 `dist/native/Z_COM_V版本号/`，避免覆盖正在使用的旧版；无需构建 Svelte 前端。原 `pack:win` 命令仍输出到原路径。
+运行：`cargo run --locked`。
+打包：`npm run pack:win` 输出到 `dist/Z_COM_V版本号/Z_COM.exe`，详见[开发、检查与打包](development.md)。

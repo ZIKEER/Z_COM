@@ -7,19 +7,15 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
-const tauriConfig = JSON.parse(await readFile(path.join(rootDir, "src-tauri", "tauri.conf.json"), "utf8"));
-const cargoToml = await readFile(path.join(rootDir, "src-tauri", "Cargo.toml"), "utf8");
+const cargoToml = await readFile(path.join(rootDir, "Cargo.toml"), "utf8");
 const cargoPackage = cargoToml.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m);
 
 if (!cargoPackage) {
-  throw new Error("无法从 src-tauri/Cargo.toml 读取版本号");
+  throw new Error("无法从 Cargo.toml 读取版本号");
 }
 
-const versions = new Set([packageJson.version, tauriConfig.version, cargoPackage[1]]);
-if (versions.size !== 1) {
-  throw new Error(
-    `版本号不一致：package.json=${packageJson.version}，tauri.conf.json=${tauriConfig.version}，Cargo.toml=${cargoPackage[1]}`,
-  );
+if (packageJson.version !== cargoPackage[1]) {
+  throw new Error(`版本号不一致：package.json=${packageJson.version}，Cargo.toml=${cargoPackage[1]}`);
 }
 
 const fingerprintInputs = [
@@ -28,17 +24,11 @@ const fingerprintInputs = [
   "LICENSE",
   "NOTICE",
   "THIRD_PARTY_NOTICES.md",
+  "Cargo.toml",
+  "Cargo.lock",
+  "build.rs",
+  "assets",
   "src",
-  "static",
-  "src-tauri/Cargo.toml",
-  "src-tauri/Cargo.lock",
-  "src-tauri/build.rs",
-  "src-tauri/tauri.conf.json",
-  "src-tauri/icons",
-  "src-tauri/src",
-  "svelte.config.js",
-  "tsconfig.json",
-  "vite.config.js",
 ];
 
 async function collectFiles(relativePath) {
@@ -72,7 +62,7 @@ if (!platform || process.arch !== "x64") {
   throw new Error(`发布脚本当前只支持 Windows/Linux x86_64，当前环境为 ${process.platform}/${process.arch}`);
 }
 
-const build = spawnSync("cargo", ["build", "--release", "--manifest-path", "src-tauri/Cargo.toml", "--locked"], {
+const build = spawnSync("cargo", ["build", "--release", "--locked"], {
   cwd: rootDir,
   stdio: "inherit",
 });
@@ -81,7 +71,7 @@ if (build.status !== 0) process.exit(build.status ?? 1);
 
 const releaseDirectory = path.join(rootDir, "dist", "release", `v${packageJson.version}`);
 const stateDirectory = path.join(rootDir, "dist", ".release-state", `v${packageJson.version}`);
-const sourceExecutable = path.join(rootDir, "src-tauri", "target", "release", platform.source);
+const sourceExecutable = path.join(rootDir, "target", "release", platform.source);
 const outputExecutable = path.join(releaseDirectory, platform.name);
 await mkdir(releaseDirectory, { recursive: true });
 await mkdir(stateDirectory, { recursive: true });

@@ -11,10 +11,20 @@
 ## 目录结构
 
 ```text
-src/                 原 Svelte 界面，保留作迁移对照
-src-tauri/           Rust 原生界面、通信后端与配置模型
-static/              静态资源
-scripts/             跨平台打包脚本
+Cargo.toml           Rust 包配置（仓库根目录即 Cargo 工程）
+build.rs             Windows 图标与应用清单资源
+assets/icons/        程序图标（icon.ico 编译进 EXE，128x128.png 用作窗口图标）
+src/
+├── main.rs          程序入口
+├── lib.rs           启动、设备枚举、多实例分配
+├── ui/              egui 界面：主窗口、接收区、终端格式化、曲线、后台任务
+├── transport.rs     串口 / Socket / probe-rs RTT 通信
+├── segger.rs        SEGGER J-Link RTT
+├── logger.rs        通信日志
+├── models.rs        配置与事件模型
+├── storage.rs       配置文件读写
+└── update*.rs       在线检查、下载与替换升级
+scripts/             版本、打包与界面截图脚本
 docs/                项目文档
 LICENSE              Apache-2.0 完整许可文本
 NOTICE               项目版权与声明
@@ -27,14 +37,7 @@ dist/                绿色版输出，不纳入源码版本管理
 启动原生开发模式：
 
 ```powershell
-cargo run --manifest-path src-tauri/Cargo.toml --locked
-```
-
-原 Svelte 界面仅用于对照，单独预览：
-
-```powershell
-npm run dev
-npm run preview
+cargo run --locked
 ```
 
 Linux 系统依赖与权限设置见 [Linux 构建与运行](linux.md)。
@@ -44,9 +47,9 @@ Linux 系统依赖与权限设置见 [Linux 构建与运行](linux.md)。
 优先执行与修改范围最接近的检查，再执行完整构建：
 
 ```powershell
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-cargo check --manifest-path src-tauri/Cargo.toml --locked
+cargo fmt --check
+cargo test --locked
+cargo check --locked
 ```
 
 ## 版本号
@@ -61,9 +64,8 @@ npm run version:set -- 0.1.8
 
 - `package.json`
 - `package-lock.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock` 中的 `z-com` 根包
-- `src-tauri/tauri.conf.json`
+- `Cargo.toml`
+- `Cargo.lock` 中的 `z-com` 根包
 
 不要再逐个手动修改版本文件。修改后应查看 Git diff，确认只有项目自身版本发生变化。
 
@@ -72,12 +74,12 @@ npm run version:set -- 0.1.8
 ### 原始构建
 
 ```powershell
-npm run build:raw
+npm run build
 ```
 
 调用 Cargo `build --release --locked`，不复制产物。Windows 主程序位于
-`src-tauri/target/release/z-com.exe`，Linux 主程序位于
-`src-tauri/target/release/z-com`。这主要用于底层构建检查，日常通常不直接取用。
+`target/release/z-com.exe`，Linux 主程序位于
+`target/release/z-com`。这主要用于底层构建检查，日常通常不直接取用。
 
 ### Windows 日常开发包
 
@@ -93,7 +95,7 @@ dist/
     └── Z_COM.exe
 ```
 
-无需再从 `src-tauri/target/release/` 手动复制。原有 `npm run pack` 仍保留为
+无需再从 `target/release/` 手动复制。原有 `npm run pack` 仍保留为
 当前平台便携包命令；Linux 执行时输出：
 
 ```text
@@ -163,12 +165,11 @@ Windows 与 WSL 共同访问的项目路径中依次执行，两边会自然归�
 所有构建脚本都会在构建前检查以下版本一致：
 
 - `package.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/tauri.conf.json`
+- `Cargo.toml`
 
 正常情况下使用 `npm run version:set -- 新版本号` 后无需人工同步。
 
-许可证字段也必须保持一致：`package.json` 和 `src-tauri/Cargo.toml` 均使用
+许可证字段也必须保持一致：`package.json` 和 `Cargo.toml` 均使用
 `Apache-2.0`。版权标识使用 `ZIKEER`；不要在发布材料中加入个人法定姓名。
 
 ## 文档维护

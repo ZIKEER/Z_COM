@@ -1,6 +1,6 @@
 # Z_COM
 
-Z_COM 是基于 Rust、egui / eframe 的原生跨平台通信工具，支持串口、TCP/UDP 与调试探针 RTT。此分支已移除运行时 WebView；原 Svelte 页面保留供界面对照。
+Z_COM 是基于 Rust、egui / eframe 的原生跨平台通信工具，支持串口、TCP/UDP 与调试探针 RTT。不依赖 WebView 或浏览器运行时，单个可执行文件即可运行。
 
 ## 主要能力
 
@@ -19,17 +19,17 @@ Z_COM 是基于 Rust、egui / eframe 的原生跨平台通信工具，支持串�
 开发环境需要 Rust stable 和对应平台的原生窗口/OpenGL 依赖。Node.js 仅用于可选的打包与版本管理脚本。
 
 ```powershell
-cargo run --manifest-path src-tauri/Cargo.toml --locked
+cargo run --locked
 ```
 
 检查与测试：
 
 ```powershell
-cargo check --manifest-path src-tauri/Cargo.toml --locked
-cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo check --locked
+cargo test --locked
 ```
 
-统一修改版本号（自动同步 npm、Cargo、Tauri 及锁文件）：
+统一修改版本号（自动同步 npm、Cargo 及锁文件）：
 
 ```powershell
 npm run version:set -- 0.1.8
@@ -38,8 +38,8 @@ npm run version:set -- 0.1.8
 三种构建方式：
 
 ```powershell
-# 1. 原始构建，仅输出到 src-tauri/target/release/
-npm run build:raw
+# 1. 原始构建，仅输出到 target/release/
+npm run build
 
 # 2. Windows 日常开发包，输出到 dist/Z_COM_V版本号/Z_COM.exe
 npm run pack:win
@@ -63,8 +63,7 @@ Release 必须分别在 Windows x86_64 和 Linux x86_64 的同一工作区执行
 - [自定义 probe-rs MCU](docs/custom-probe-rs-targets.md)
 - [功能状态与开发路线图](docs/roadmap.md)
 
-当前版本以 `package.json`、`src-tauri/Cargo.toml` 和
-`src-tauri/tauri.conf.json` 中一致的版本号为准。正式功能状态、验收范围和
+当前版本以 `package.json` 和 `Cargo.toml` 中一致的版本号为准。正式功能状态、验收范围和
 暂不支持项以[路线图](docs/roadmap.md)为准。
 
 ## 许可证

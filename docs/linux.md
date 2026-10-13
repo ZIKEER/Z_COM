@@ -18,8 +18,8 @@ sudo apt install -y build-essential curl file pkg-config libudev-dev \
 
 ```bash
 npm ci
-cargo check --manifest-path src-tauri/Cargo.toml --locked
-cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo check --locked
+cargo test --locked
 npm run pack
 ```
 
