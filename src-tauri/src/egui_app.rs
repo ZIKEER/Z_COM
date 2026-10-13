@@ -129,33 +129,7 @@ impl App {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         let fonts = font_definitions();
         cc.egui_ctx.set_fonts(fonts);
-        cc.egui_ctx.style_mut(|style| {
-            for text_style in [egui::TextStyle::Body, egui::TextStyle::Button] {
-                style
-                    .text_styles
-                    .insert(text_style, egui::FontId::proportional(13.0));
-            }
-            style.spacing.item_spacing = egui::vec2(5.0, 4.0);
-            style.spacing.button_padding = egui::vec2(7.0, 4.0);
-            style.spacing.interact_size.y = 26.0;
-            style.spacing.button_padding.y = 6.0;
-            style.visuals.widgets.inactive.bg_fill = Color32::WHITE;
-            style.visuals.widgets.inactive.weak_bg_fill = Color32::WHITE;
-            style.visuals.widgets.inactive.bg_stroke =
-                egui::Stroke::new(1.0_f32, Color32::from_gray(185));
-            style.visuals.panel_fill = Color32::from_rgb(245, 245, 245);
-            style.visuals.selection.bg_fill = Color32::from_rgb(225, 225, 225);
-            style.visuals.selection.stroke = egui::Stroke::new(1.0_f32, Color32::from_gray(119));
-            style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(229, 241, 251);
-            for widget in [
-                &mut style.visuals.widgets.inactive,
-                &mut style.visuals.widgets.hovered,
-                &mut style.visuals.widgets.active,
-            ] {
-                widget.corner_radius = egui::CornerRadius::ZERO;
-            }
-            style.visuals.override_text_color = Some(Color32::from_rgb(32, 32, 32));
-        });
+        apply_style(&cc.egui_ctx);
         let image = image::load_from_memory(include_bytes!("../icons/128x128.png"))
             .map_err(|error| error.to_string())?
             .into_rgba8();
@@ -532,30 +506,52 @@ impl App {
     }
 
     fn connection_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.add_enabled_ui(!self.connected && self.connecting.is_none(), |ui| {
-                control_group(ui, |ui| {
-                    for (value, label) in [
+        let idle = !self.connected && self.connecting.is_none();
+        let viewport = ui.ctx().screen_rect().width();
+        let vw = |percent: f32, min: f32, max: f32| (viewport * percent / 100.0).clamp(min, max);
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 7.0;
+            ui.add_enabled_ui(idle, |ui| {
+                mode_switch(
+                    ui,
+                    &mut self.config.transport_mode,
+                    &[
                         ("serial", "串口"),
                         ("socket", "Socket"),
                         ("probe", "调试探针 / RTT"),
-                    ] {
-                        segment(ui, &mut self.config.transport_mode, value.into(), label);
-                    }
-                });
-                if ui
-                    .add_enabled_ui(!self.scanning, |ui| {
-                        icon_button(ui, "refresh", "刷新设备", false)
-                    })
-                    .inner
-                    .clicked()
-                {
+                    ],
+                    false,
+                );
+            });
+            ui.add_enabled_ui(idle && !self.scanning, |ui| {
+                let hint = if self.scanning {
+                    "正在扫描设备"
+                } else {
+                    "刷新设备"
+                };
+                if icon_button(ui, "refresh", hint, false).clicked() {
                     self.refresh_devices();
                 }
             });
+            match self.config.transport_mode.as_str() {
+                "socket" => self.socket_fields(ui, idle),
+                "probe" => self.probe_fields(ui, idle, vw(27.0, 190.0, 360.0), vw(18.0, 145.0, 220.0)),
+                _ => self.serial_fields(ui, idle, vw(23.0, 160.0, 300.0)),
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, "expand", "扩展发送", false).clicked() {
-                    self.config.preset_panel_visible = !self.config.preset_panel_visible;
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let open = self.config.preset_panel_visible;
+                if icon_button_sized(
+                    ui,
+                    if open { "chevron-right" } else { "chevron-left" },
+                    "扩展发送",
+                    false,
+                    open,
+                    30.0,
+                )
+                .clicked()
+                {
+                    self.config.preset_panel_visible = !open;
                 }
                 if icon_button(ui, "help", "关于 Z_COM", false).clicked() {
                     self.about_open = true;
@@ -566,267 +562,594 @@ impl App {
                     self.tasks
                         .send(Task::CheckSdk(self.draft.jlink_sdk_path.clone()));
                 }
-                let label = if self.connected {
-                    "断开"
+                let (icon, label, fill, border) = if self.connected {
+                    ("unlink", "断开", palette::GREEN, palette::GREEN_BORDER)
                 } else if self.connecting.is_some() {
-                    "取消"
+                    ("stop", "取消", palette::AMBER, palette::AMBER_BORDER)
                 } else {
-                    "连接"
+                    ("link", "连接", palette::RED, palette::RED_BORDER)
                 };
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new(label).color(Color32::WHITE))
-                            .fill(Color32::from_rgb(244, 67, 54)),
-                    )
-                    .clicked()
-                {
+                if command_button(ui, icon, label, fill, border, 30.0).clicked() {
                     self.connect();
                 }
             });
         });
-        ui.horizontal_wrapped(|ui| {
-            ui.add_enabled_ui(!self.connected && self.connecting.is_none(), |ui| {
-                if self.config.transport_mode == "socket" {
-                    choices(
-                        ui,
-                        "协议",
-                        &mut self.config.socket_protocol,
-                        &["TCP", "UDP"],
-                    );
-                    choices(
-                        ui,
-                        "角色",
-                        &mut self.config.socket_role,
-                        &["Client", "Server"],
-                    );
-                    ui.label("地址");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.config.socket_host)
-                            .desired_width(150.0),
-                    );
-                    if self.config.socket_role == "Server" {
-                        egui::ComboBox::from_id_salt("local_addresses")
-                            .selected_text("本机地址")
-                            .show_ui(ui, |ui| {
-                                for address in &self.addresses {
-                                    ui.selectable_value(
-                                        &mut self.config.socket_host,
-                                        address.clone(),
-                                        address,
-                                    );
-                                }
-                            });
-                    }
-                    ui.label("端口");
-                    ui.add(egui::DragValue::new(&mut self.config.socket_port).range(1..=65535));
-                } else {
-                    let target = if self.config.transport_mode == "probe" {
-                        &mut self.config.selected_probe
-                    } else {
-                        &mut self.config.port
-                    };
-                    ui.label("设备");
-                    egui::ComboBox::from_id_salt("device")
-                        .width(235.0)
-                        .selected_text(
-                            self.devices
-                                .iter()
-                                .find(|item| item.id == *target)
-                                .map(|item| item.label.as_str())
-                                .unwrap_or(target),
-                        )
-                        .show_ui(ui, |ui| {
-                            for device in self
-                                .devices
-                                .iter()
-                                .filter(|item| item.transport == self.config.transport_mode)
-                            {
-                                ui.selectable_value(target, device.id.clone(), &device.label);
-                            }
-                        });
-                    if self.config.transport_mode == "serial" {
-                        ui.label("波特率");
-                        egui::ComboBox::from_id_salt("baud_history")
-                            .width(115.0)
-                            .selected_text(&self.config.baudrate)
-                            .show_ui(ui, |ui| {
-                                for baud in [
-                                    "1200", "2400", "4800", "9600", "19200", "38400", "57600",
-                                    "115200", "230400", "460800", "921600", "1000000", "2000000",
-                                    "3000000",
-                                ] {
-                                    ui.selectable_value(
-                                        &mut self.config.baudrate,
-                                        baud.into(),
-                                        baud,
-                                    );
-                                }
-                                for baud in &self.config.baudrate_history {
-                                    ui.selectable_value(
-                                        &mut self.config.baudrate,
-                                        baud.clone(),
-                                        baud,
-                                    );
-                                }
-                                if ui.button("自定义波特率…").clicked() {
-                                    self.live_baud_draft.clear();
-                                    self.baud_error.clear();
-                                    self.baud_open = true;
-                                }
-                            });
-                    } else {
-                        ui.label("目标芯片");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.probe_chip)
-                                .desired_width(180.0),
-                        );
-                        egui::ComboBox::from_id_salt("target_history")
-                            .selected_text("历史 / 自定义")
-                            .show_ui(ui, |ui| {
-                                for target in self
-                                    .config
-                                    .probe_chip_history
-                                    .iter()
-                                    .chain(self.targets.iter())
-                                {
-                                    ui.selectable_value(
-                                        &mut self.config.probe_chip,
-                                        target.clone(),
-                                        target,
-                                    );
-                                }
-                            });
-                        ui.checkbox(&mut self.config.probe_reset, "连接后复位");
+    }
+
+    fn device_select(&mut self, ui: &mut egui::Ui, label: &str, width: f32) {
+        field_label(ui, label);
+        let probe = self.config.transport_mode == "probe";
+        let target = if probe {
+            &mut self.config.selected_probe
+        } else {
+            &mut self.config.port
+        };
+        let selected = self
+            .devices
+            .iter()
+            .find(|item| item.id == *target)
+            .map(|item| item.label.clone())
+            .unwrap_or_else(|| target.clone());
+        select_box(ui, "device", width, selected, |ui| {
+            for device in self
+                .devices
+                .iter()
+                .filter(|item| item.transport == self.config.transport_mode)
+            {
+                ui.selectable_value(target, device.id.clone(), &device.label);
+            }
+        });
+    }
+
+    fn serial_fields(&mut self, ui: &mut egui::Ui, idle: bool, width: f32) {
+        ui.add_enabled_ui(idle, |ui| self.device_select(ui, "设备", width));
+        // 与原版一致：连接后仍可切换波特率，立即下发到串口
+        ui.add_enabled_ui(self.connecting.is_none(), |ui| {
+            field_label(ui, "波特率");
+            let before = self.config.baudrate.clone();
+            let mut chosen = before.clone();
+            select_box(ui, "baudrate", 128.0, before.clone(), |ui| {
+                ui.weak("常用波特率");
+                for baud in DEFAULT_BAUDRATES {
+                    ui.selectable_value(&mut chosen, (*baud).to_owned(), *baud);
+                }
+                let custom: Vec<_> = self
+                    .config
+                    .baudrate_history
+                    .iter()
+                    .filter(|baud| !DEFAULT_BAUDRATES.contains(&baud.as_str()))
+                    .cloned()
+                    .collect();
+                if !custom.is_empty() {
+                    ui.separator();
+                    ui.weak("自定义记录");
+                    for baud in custom {
+                        ui.selectable_value(&mut chosen, baud.clone(), baud);
                     }
                 }
+                ui.separator();
+                if ui.selectable_label(false, "自定义…").clicked() {
+                    self.live_baud_draft.clear();
+                    self.baud_error.clear();
+                    self.baud_open = true;
+                }
             });
-            if self.connected && self.config.transport_mode == "serial" {
-                ui.label("波特率");
-                let response = ui
-                    .add(egui::TextEdit::singleline(&mut self.live_baud_draft).desired_width(95.0));
-                if response.lost_focus() {
-                    let value = self.live_baud_draft.clone();
-                    if value != self.config.baudrate {
-                        let mut config = self.config.clone();
-                        config.baudrate = value;
-                        self.tasks.send(Task::Apply(config, true));
-                    }
+            if chosen != before {
+                if self.connected {
+                    let mut config = self.config.clone();
+                    config.baudrate = chosen;
+                    self.tasks.send(Task::Apply(config, true));
+                } else {
+                    self.config.baudrate = chosen;
                 }
             }
         });
     }
 
-    fn extended_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.strong("扩展发送");
-            if icon_button(ui, "upload", "导入", true).clicked() {
-                self.tasks.send(Task::Import);
+    fn socket_fields(&mut self, ui: &mut egui::Ui, idle: bool) {
+        ui.add_enabled_ui(idle, |ui| {
+            mode_switch(
+                ui,
+                &mut self.config.socket_protocol,
+                &[("TCP", "TCP"), ("UDP", "UDP")],
+                true,
+            );
+            mode_switch(
+                ui,
+                &mut self.config.socket_role,
+                &[("Client", "客户端"), ("Server", "服务端")],
+                true,
+            );
+            field_label(ui, "地址");
+            let server = self.config.socket_role == "Server";
+            let response = ui.add_sized(
+                [150.0, 30.0],
+                egui::TextEdit::singleline(&mut self.config.socket_host)
+                    .margin(egui::Margin {
+                        left: 7,
+                        right: if server { 32 } else { 7 },
+                        top: 4,
+                        bottom: 4,
+                    })
+                    .vertical_align(egui::Align::Center),
+            );
+            if server {
+                let popup = ui.make_persistent_id("local-addresses");
+                let open = ui.memory(|memory| memory.is_popup_open(popup));
+                let toggle = egui::Rect::from_min_max(
+                    egui::pos2(response.rect.right() - 29.0, response.rect.top() + 1.0),
+                    response.rect.right_bottom() - egui::vec2(1.0, 1.0),
+                );
+                if ui
+                    .put(toggle, |ui: &mut egui::Ui| {
+                        icon_button_sized(ui, "chevron-down", "本机地址", true, open, 28.0)
+                    })
+                    .clicked()
+                {
+                    ui.memory_mut(|memory| memory.toggle_popup(popup));
+                }
+                egui::popup_below_widget(
+                    ui,
+                    popup,
+                    &response,
+                    egui::PopupCloseBehavior::CloseOnClick,
+                    |ui| {
+                        ui.set_min_width(150.0);
+                        if self.addresses.is_empty() {
+                            ui.weak("未找到本机 IPv4 地址");
+                        }
+                        for address in &self.addresses {
+                            ui.selectable_value(
+                                &mut self.config.socket_host,
+                                address.clone(),
+                                address,
+                            );
+                        }
+                    },
+                );
             }
-            if icon_button(ui, "download", "导出", true).clicked() {
-                self.tasks.send(Task::Export(self.extended.clone()));
+            field_label(ui, "端口");
+            ui.add_sized(
+                [82.0, 30.0],
+                egui::DragValue::new(&mut self.config.socket_port).range(1..=65535),
+            );
+        });
+    }
+
+    fn probe_fields(&mut self, ui: &mut egui::Ui, idle: bool, width: f32, chip_width: f32) {
+        ui.add_enabled_ui(idle, |ui| {
+            self.device_select(ui, "调试探针", width);
+            field_label(ui, "目标芯片");
+            // 可输入的下拉框：输入框右侧附带展开按钮，对应原版 `.chip-combobox`
+            let popup = ui.make_persistent_id("probe-chip-options");
+            let response = ui.add_sized(
+                [chip_width, 30.0],
+                egui::TextEdit::singleline(&mut self.config.probe_chip)
+                    .hint_text("输入或选择目标芯片")
+                    .margin(egui::Margin {
+                        left: 7,
+                        right: 32,
+                        top: 4,
+                        bottom: 4,
+                    })
+                    .vertical_align(egui::Align::Center),
+            );
+            let open = ui.memory(|memory| memory.is_popup_open(popup));
+            let toggle = egui::Rect::from_min_max(
+                egui::pos2(response.rect.right() - 29.0, response.rect.top() + 1.0),
+                response.rect.right_bottom() - egui::vec2(1.0, 1.0),
+            );
+            if ui
+                .put(toggle, |ui: &mut egui::Ui| {
+                    icon_button_sized(ui, "chevron-down", "选择目标芯片", true, open, 28.0)
+                })
+                .clicked()
+            {
+                ui.memory_mut(|memory| memory.toggle_popup(popup));
             }
-            if icon_button(ui, "add", "添加条目", true).clicked() {
-                self.extended.items.push(ExtendedSendItem {
-                    id: chrono::Local::now().timestamp_micros() as u64,
-                    delay: self.extended.settings.default_delay,
-                    ..Default::default()
+            egui::popup_below_widget(
+                ui,
+                popup,
+                &response,
+                egui::PopupCloseBehavior::CloseOnClick,
+                |ui| {
+                    ui.set_min_width(chip_width);
+                    egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                        let mut options = self.config.probe_chip_history.clone();
+                        for target in &self.targets {
+                            if !options.contains(target) {
+                                options.push(target.clone());
+                            }
+                        }
+                        if options.is_empty() {
+                            ui.weak("暂无记录，请直接输入");
+                        }
+                        for chip in options {
+                            ui.selectable_value(&mut self.config.probe_chip, chip.clone(), chip);
+                        }
+                    });
+                },
+            );
+            check_styled(
+                ui,
+                &mut self.config.probe_reset,
+                "连接后复位",
+                palette::CHECK_GREEN,
+                18.0,
+            );
+        });
+    }
+
+    fn status_ui(&mut self, ui: &mut egui::Ui) {
+        let small = |text: &str| egui::RichText::new(text).size(12.0).color(palette::LABEL);
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 7.0;
+            let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+            ui.painter().circle_filled(
+                dot.center(),
+                4.0,
+                if self.connected {
+                    Color32::from_rgb(0x26, 0x83, 0x4b)
+                } else {
+                    Color32::from_rgb(0x89, 0x93, 0x9a)
+                },
+            );
+            ui.label(small(&self.status));
+            let target = match self.config.transport_mode.as_str() {
+                "probe" => "调试探针 RTT".to_owned(),
+                "socket" => format!(
+                    "{} {}",
+                    self.config.socket_protocol,
+                    if self.config.socket_role == "Server" {
+                        "服务端"
+                    } else {
+                        "客户端"
+                    }
+                ),
+                _ if self.config.port.is_empty() => "未选择串口".to_owned(),
+                _ => self.config.port.clone(),
+            };
+            ui.label(small(&target))
+                .on_hover_text(self.directory.display().to_string());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(small(&format!("v{}", env!("CARGO_PKG_VERSION"))));
+                ui.label(small(&format!("接收 {} B", group_digits(self.received))));
+                ui.label(small(&format!("发送 {} B", group_digits(self.sent))));
+                ui.label(small(&format!(
+                    "实例 {}",
+                    self.instance
+                        .as_ref()
+                        .map(|instance| instance.id)
+                        .unwrap_or(1)
+                )));
+            });
+        });
+    }
+
+    fn send_ui(&mut self, ui: &mut egui::Ui) {
+        const BUTTON_WIDTH: f32 = 82.0;
+        let area = ui.available_rect_before_wrap();
+        let left = egui::Rect::from_min_max(
+            area.min,
+            egui::pos2(area.right() - BUTTON_WIDTH - 5.0, area.bottom()),
+        );
+        let button = egui::Rect::from_min_max(egui::pos2(area.right() - BUTTON_WIDTH, area.top()), area.max);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
+            ui.horizontal(|ui| {
+                ui.set_height(29.0);
+                mode_switch(
+                    ui,
+                    &mut self.config.send_mode,
+                    &[("ASCII", "ASCII"), ("HEX", "HEX")],
+                    true,
+                );
+                check(ui, &mut self.crlf, "添加 CRLF");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label("ms");
+                    ui.add_sized(
+                        [72.0, 25.0],
+                        egui::DragValue::new(&mut self.config.auto_send_interval).range(100..=60000),
+                    );
+                    ui.add_enabled_ui(self.connected, |ui| {
+                        check(ui, &mut self.auto_send, "自动发送");
+                    });
                 });
-            }
+            });
+            ui.add_space(3.0);
+            let hint = if self.config.send_mode == "HEX" {
+                "输入十六进制字节，例如 01 03 00 00"
+            } else {
+                "输入要发送的文本"
+            };
+            ui.add_sized(
+                ui.available_size(),
+                egui::TextEdit::multiline(&mut self.send_text)
+                    .hint_text(hint)
+                    .margin(egui::vec2(8.0, 6.0))
+                    .font(egui::TextStyle::Monospace),
+            );
         });
-        ui.separator();
+        let clicked = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(button), |ui| {
+                ui.add_enabled_ui(self.connected, |ui| {
+                    labeled_icon_button(ui, "send", "发送", button.size())
+                })
+                .inner
+            })
+            .inner
+            .clicked();
+        if clicked {
+            self.send(
+                &self.send_text.clone(),
+                self.config.send_mode == "HEX",
+                false,
+                self.crlf,
+            );
+        }
+        ui.allocate_rect(area, egui::Sense::hover());
+    }
+
+    fn receive_ui(&mut self, ui: &mut egui::Ui) {
+        let mut clear = false;
+        pane_toolbar(ui, |ui| {
+            ui.label(bold("接收区域"));
+            mode_switch(
+                ui,
+                &mut self.config.display_mode,
+                &[("HEX", "HEX"), ("ASCII", "ASCII"), ("MIXED", "HEX+ASCII")],
+                true,
+            );
+            check(ui, &mut self.config.auto_scroll, "自动滚动");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                clear |= icon_button(ui, "clear", "清空报文并重置收发计数", true).clicked();
+                let plot = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new("曲线")
+                            .size(12.0)
+                            .color(Color32::from_rgb(0x3f, 0x4b, 0x45)),
+                    )
+                    .fill(Color32::WHITE)
+                    .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(0xb8, 0xc2, 0xbc)))
+                    .corner_radius(3.0)
+                    .min_size(egui::vec2(0.0, 24.0)),
+                );
+                if plot.on_hover_text("打开独立数据曲线窗口").clicked() {
+                    self.plot.open = true;
+                }
+            });
+        });
+        egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(9, 7))
+            .show(ui, |ui| {
+                clear |= self.receive_view.ui(
+                    ui,
+                    &self.receive,
+                    &mut self.config.display_ansi,
+                    self.config.auto_scroll,
+                );
+            });
+        if clear {
+            self.receive.clear();
+            self.receive_view.clear();
+            self.counter_baseline = self.events.counters();
+            self.sent = 0;
+            self.received = 0;
+        }
+    }
+
+    fn extended_ui(&mut self, ui: &mut egui::Ui) {
+        const HEX_COLUMN: f32 = 36.0;
+        const ORDER_COLUMN: f32 = 48.0;
+        const DELAY_COLUMN: f32 = 64.0;
+        const ROW_HEIGHT: f32 = 55.0;
+        const FOOTER_HEIGHT: f32 = 37.0;
+        let width = ui.available_width();
+        // 与原版 container query 一致的三档宽度
+        let wide = width > 429.0;
+        let narrow = width < 280.0;
+        let tiny = width < 180.0;
+        let actions_column = if narrow { 54.0 } else { 92.0 };
+        pane_toolbar(ui, |ui| {
+            ui.label(bold("扩展发送"));
+            if tiny {
+                return;
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                if icon_button(ui, "add", "添加条目", true).clicked() {
+                    self.extended.items.push(ExtendedSendItem {
+                        id: chrono::Local::now().timestamp_micros() as u64,
+                        delay: self.extended.settings.default_delay,
+                        ..Default::default()
+                    });
+                }
+                if icon_button(ui, "download", "导出", true).clicked() {
+                    self.tasks.send(Task::Export(self.extended.clone()));
+                }
+                if icon_button(ui, "upload", "导入", true).clicked() {
+                    self.tasks.send(Task::Import);
+                }
+            });
+        });
+        let data_column = (width
+            - HEX_COLUMN
+            - actions_column
+            - if wide { ORDER_COLUMN + DELAY_COLUMN } else { 0.0 })
+        .max(40.0);
+        if !tiny {
+            let (header, _) = ui.allocate_exact_size(egui::vec2(width, 27.0), egui::Sense::hover());
+            let painter = ui.painter();
+            painter.rect_filled(header, 0.0, palette::WINDOW);
+            painter.hline(
+                header.x_range(),
+                header.bottom() - 0.5,
+                egui::Stroke::new(1.0_f32, palette::BAR_LINE),
+            );
+            let mut x = header.left();
+            let mut title = |text: &str, column: f32| {
+                if !text.is_empty() {
+                    painter.text(
+                        egui::pos2(x + column / 2.0, header.center().y),
+                        egui::Align2::CENTER_CENTER,
+                        text,
+                        egui::FontId::new(12.0, bold_family()),
+                        palette::TEXT,
+                    );
+                }
+                x += column;
+            };
+            title("HEX", HEX_COLUMN);
+            title("数据内容 / 注释", data_column);
+            if wide {
+                title("序号", ORDER_COLUMN);
+                title("延时", DELAY_COLUMN);
+            }
+        }
         let mut send = None;
-        ui.horizontal(|ui| {
-            ui.label("HEX");
-            ui.label("数据内容 / 注释");
-            if ui.available_width() > 380.0 {
-                ui.label("序号       延时");
-            }
-        });
         let mut remove = None;
         let mut move_item = None;
-        let height = (ui.available_height() - 38.0).max(30.0);
+        let count = self.extended.items.len();
+        let list_height = (ui.available_height() - FOOTER_HEIGHT).max(30.0);
         egui::ScrollArea::vertical()
-            .max_height(height)
+            .max_height(list_height)
+            .min_scrolled_height(list_height)
+            .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.set_min_height(height);
+                ui.spacing_mut().item_spacing.y = 0.0;
                 let width = ui.available_width();
-                let data_width = (width - if width > 510.0 { 250.0 } else { 160.0 }).max(60.0);
                 for (index, item) in self.extended.items.iter_mut().enumerate() {
                     ui.push_id(item.id, |ui| {
-                        if width < 160.0 {
+                        if tiny {
+                            let label = if item.comment.trim().is_empty() {
+                                "发送"
+                            } else {
+                                item.comment.trim()
+                            };
+                            let (row, _) = ui.allocate_exact_size(egui::vec2(width, 37.0), egui::Sense::hover());
+                            let button = egui::Button::new(egui::RichText::new(label))
+                                .fill(palette::BAR)
+                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(0xc6, 0xcd, 0xd1)))
+                                .truncate();
+                            if ui.put(row.shrink(3.0), button).on_hover_text(&item.data).clicked() {
+                                send = Some(item.clone());
+                            }
+                            ui.painter().hline(row.x_range(), row.bottom() - 0.5, egui::Stroke::new(1.0_f32, palette::ROW_LINE));
+                            return;
+                        }
+                        let (row, _) = ui.allocate_exact_size(egui::vec2(width, ROW_HEIGHT), egui::Sense::hover());
+                        ui.painter().hline(row.x_range(), row.bottom() - 0.5, egui::Stroke::new(1.0_f32, palette::ROW_LINE));
+                        let mut x = row.left();
+                        let mut column = |column_width: f32| {
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(x, row.top()),
+                                egui::vec2(column_width, ROW_HEIGHT - 1.0),
+                            );
+                            x += column_width;
+                            rect
+                        };
+                        let hex = column(HEX_COLUMN);
+                        ui.put(
+                            egui::Rect::from_center_size(hex.center(), egui::vec2(14.0, 20.0)),
+                            |ui: &mut egui::Ui| check(ui, &mut item.is_hex, ""),
+                        )
+                        .on_hover_text("HEX 格式");
+                        let data = column(data_column).shrink2(egui::vec2(3.0, 3.0));
+                        let (data_hint, data_tip) = if item.is_hex {
+                            ("HEX 字节", "输入 HEX 字节，例如 01 03 00 00")
+                        } else {
+                            (
+                                "ASCII，支持 \\r \\n \\t \\0 \\xNN",
+                                "支持转义：\\r  \\n  \\t  \\0  \\\\  \\xNN",
+                            )
+                        };
+                        ui.put(
+                            egui::Rect::from_min_size(data.min, egui::vec2(data.width(), 24.0)),
+                            egui::TextEdit::singleline(&mut item.data)
+                                .hint_text(data_hint)
+                                .margin(egui::vec2(5.0, 2.0))
+                                .vertical_align(egui::Align::Center),
+                        )
+                        .on_hover_text(data_tip);
+                        ui.put(
+                            egui::Rect::from_min_size(
+                                data.min + egui::vec2(0.0, 24.0),
+                                egui::vec2(data.width(), 24.0),
+                            ),
+                            egui::TextEdit::singleline(&mut item.comment)
+                                .hint_text("注释")
+                                .text_color(palette::MUTED)
+                                .background_color(Color32::from_rgb(0xfa, 0xfb, 0xfb))
+                                .margin(egui::vec2(5.0, 2.0))
+                                .vertical_align(egui::Align::Center),
+                        );
+                        if wide {
+                            let order = column(ORDER_COLUMN);
+                            ui.put(
+                                egui::Rect::from_center_size(order.center(), egui::vec2(ORDER_COLUMN - 6.0, 24.0)),
+                                egui::DragValue::new(&mut item.sort_order).range(0..=9999),
+                            )
+                            .on_hover_text("发送序号，0 不参与发送");
+                            let delay = column(DELAY_COLUMN);
+                            ui.put(
+                                egui::Rect::from_center_size(delay.center(), egui::vec2(DELAY_COLUMN - 6.0, 24.0)),
+                                egui::DragValue::new(&mut item.delay).range(0..=600000),
+                            )
+                            .on_hover_text("发送延时（毫秒）");
+                        }
+                        let actions = column(actions_column);
+                        let hint = if item.comment.trim().is_empty() {
+                            "发送此条".to_owned()
+                        } else {
+                            item.comment.clone()
+                        };
+                        if narrow {
+                            let rect = egui::Rect::from_center_size(actions.center(), egui::vec2(48.0, 24.0));
                             if ui
-                                .button(if item.comment.is_empty() {
-                                    "发送"
-                                } else {
-                                    &item.comment
-                                })
+                                .put(rect, |ui: &mut egui::Ui| labeled_icon_button(ui, "send", "发送", rect.size()))
+                                .on_hover_text(hint)
                                 .clicked()
                             {
                                 send = Some(item.clone());
                             }
-                        } else {
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut item.is_hex, "");
-                                ui.vertical(|ui| {
-                                    ui.spacing_mut().item_spacing.y = 2.0;
-                                    ui.add(
-                                        egui::TextEdit::singleline(&mut item.data)
-                                            .desired_width(data_width)
-                                            .hint_text("数据内容"),
-                                    );
-                                    ui.add(
-                                        egui::TextEdit::singleline(&mut item.comment)
-                                            .desired_width(data_width)
-                                            .hint_text("注释"),
-                                    );
-                                });
-                                if width > 510.0 {
-                                    ui.add(
-                                        egui::DragValue::new(&mut item.sort_order).range(0..=9999),
-                                    );
-                                    ui.add(egui::DragValue::new(&mut item.delay).range(0..=600000));
-                                }
-                                ui.scope(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 1.0;
-                                    if icon_button(ui, "send", "发送此条", true).clicked() {
-                                        send = Some(item.clone());
-                                    }
-                                    if ui
-                                        .add_sized(
-                                            [20.0, 24.0],
-                                            egui::Button::new("↑").frame(false),
-                                        )
-                                        .clicked()
-                                        && index > 0
-                                    {
-                                        move_item = Some((index, index - 1));
-                                    }
-                                    if ui
-                                        .add_sized(
-                                            [20.0, 24.0],
-                                            egui::Button::new("↓").frame(false),
-                                        )
-                                        .clicked()
-                                    {
-                                        move_item = Some((index, index + 1));
-                                    }
-                                    if ui
-                                        .add_sized(
-                                            [20.0, 24.0],
-                                            egui::Button::new("×").frame(false),
-                                        )
-                                        .clicked()
-                                    {
-                                        remove = Some(index);
-                                    }
-                                });
-                            });
+                            return;
                         }
-                        ui.separator();
+                        let buttons = [
+                            ("send", hint.as_str(), true),
+                            ("up", "上移", index > 0),
+                            ("down", "下移", index + 1 < count),
+                            ("trash", "删除", true),
+                        ];
+                        let start = actions.center().x - (4.0 * 21.0 + 3.0) / 2.0;
+                        for (slot, (icon, tip, enabled)) in buttons.into_iter().enumerate() {
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(start + slot as f32 * 22.0, actions.center().y - 10.5),
+                                egui::vec2(21.0, 21.0),
+                            );
+                            let clicked = ui
+                                .put(rect, |ui: &mut egui::Ui| {
+                                    ui.add_enabled_ui(enabled, |ui| {
+                                        icon_button_sized(ui, icon, tip, true, false, 21.0)
+                                    })
+                                    .inner
+                                })
+                                .clicked();
+                            if clicked {
+                                match icon {
+                                    "send" => send = Some(item.clone()),
+                                    "up" => move_item = Some((index, index - 1)),
+                                    "down" => move_item = Some((index, index + 1)),
+                                    _ => remove = Some(index),
+                                }
+                            }
+                        }
                     });
                 }
                 if self.extended.items.is_empty() {
-                    ui.weak("暂无扩展发送条目");
+                    ui.add_space(28.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new("暂无扩展发送条目").color(Color32::from_rgb(0x7b, 0x85, 0x8d)));
+                    });
                 }
             });
         if let Some(index) = remove {
@@ -840,26 +1163,43 @@ impl App {
         if let Some(item) = send {
             self.send(&item.data, item.is_hex, !item.is_hex, false);
         }
-        ui.horizontal_wrapped(|ui| {
-            ui.checkbox(&mut self.extended.settings.multi_send, "多条发送");
-            ui.checkbox(&mut self.extended.settings.loop_send, "循环发送");
-            if ui
-                .add(
-                    egui::Button::new(
-                        egui::RichText::new(if self.batch.is_empty() {
-                            "启动发送"
+        let footer = egui::Frame::new()
+            .fill(palette::BAR)
+            .inner_margin(egui::Margin::symmetric(6, 4))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.set_height(FOOTER_HEIGHT - 8.0);
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    if !tiny {
+                        check(ui, &mut self.extended.settings.multi_send, "多条发送");
+                        check(ui, &mut self.extended.settings.loop_send, "循环发送");
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if !tiny {
+                            let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                            paint_icon(ui.painter(), rect.center(), "help", Color32::from_rgb(0x69, 0x74, 0x7d));
+                            response.on_hover_text(
+                                "ASCII 支持 \\r、\\n、\\t、\\0、\\\\、\\xNN 转义；序号 0 不参与发送；序号决定发送顺序；延时单位为毫秒",
+                            );
+                        }
+                        let (icon, label) = if self.batch.is_empty() {
+                            ("play", "启动发送")
                         } else {
-                            "停止"
-                        })
-                        .color(Color32::WHITE),
-                    )
-                    .fill(Color32::from_rgb(76, 175, 80)),
-                )
-                .clicked()
-            {
-                self.start_batch();
-            }
-        });
+                            ("stop", "停止")
+                        };
+                        if command_button(ui, icon, label, palette::GREEN, palette::GREEN_BORDER, 27.0).clicked() {
+                            self.start_batch();
+                        }
+                    });
+                });
+            });
+        let rect = footer.response.rect;
+        ui.painter().hline(
+            rect.x_range(),
+            rect.top() + 0.5,
+            egui::Stroke::new(1.0_f32, palette::TOOLBAR_LINE),
+        );
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -1492,30 +1832,6 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        ctx.style_mut(|style| {
-            style
-                .text_styles
-                .insert(egui::TextStyle::Body, egui::FontId::proportional(13.0));
-            style
-                .text_styles
-                .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
-            style
-                .text_styles
-                .insert(egui::TextStyle::Small, egui::FontId::proportional(11.0));
-            style
-                .text_styles
-                .insert(egui::TextStyle::Monospace, egui::FontId::monospace(12.0));
-            style.spacing.interact_size.y = 29.0;
-            style.spacing.button_padding = egui::vec2(9.0, 5.0);
-            style.spacing.icon_width = 17.0;
-            style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(245, 245, 245);
-            style.visuals.widgets.inactive.bg_fill = Color32::WHITE;
-            style.visuals.widgets.inactive.bg_stroke =
-                egui::Stroke::new(1.0_f32, Color32::from_gray(173));
-            style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::ZERO;
-            style.visuals.selection.bg_fill = Color32::from_rgb(225, 225, 225);
-            style.visuals.selection.stroke = egui::Stroke::new(1.0_f32, Color32::from_gray(119));
-        });
         self.handle_events();
         if let Some(size) = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size())) {
             if size.x >= 760.0 && size.y >= 560.0 {
@@ -1659,150 +1975,121 @@ impl eframe::App for App {
                 }
             }
         }
-        egui::TopBottomPanel::top("connection").show(ctx, |ui| self.connection_ui(ui));
+        egui::TopBottomPanel::top("connection")
+            .exact_height(44.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(palette::BAR)
+                    .inner_margin(egui::Margin::symmetric(7, 5)),
+            )
+            .show(ctx, |ui| self.connection_ui(ui));
         if !self.error.is_empty() {
-            egui::TopBottomPanel::top("error").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.colored_label(Color32::DARK_RED, &self.error);
-                    if ui.button("×").clicked() {
-                        self.error.clear();
-                    }
+            egui::TopBottomPanel::top("error")
+                .frame(
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(0xf7, 0xe4, 0xe5))
+                        .inner_margin(egui::Margin::symmetric(9, 4)),
+                )
+                .show(ctx, |ui| {
+                    ui.horizontal_centered(|ui| {
+                        ui.set_min_height(21.0);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icon_button_sized(ui, "minus", "关闭", true, false, 22.0).clicked() {
+                                self.error.clear();
+                            }
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&self.error)
+                                            .color(Color32::from_rgb(0x84, 0x2b, 0x32)),
+                                    )
+                                    .truncate(),
+                                );
+                            });
+                        });
+                    });
                 });
-            });
         }
         egui::TopBottomPanel::bottom("status")
             .exact_height(25.0)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.colored_label(
-                        if self.connected {
-                            Color32::DARK_GREEN
-                        } else {
-                            Color32::GRAY
-                        },
-                        "●",
-                    );
-                    ui.label(&self.status);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("v{}", env!("CARGO_PKG_VERSION")));
-                        ui.label(format!("接收 {} B", self.received));
-                        ui.label(format!("发送 {} B", self.sent));
-                        ui.label(format!(
-                            "实例 {}",
-                            self.instance
-                                .as_ref()
-                                .map(|instance| instance.id)
-                                .unwrap_or(1)
-                        ));
-                    });
-                });
-            });
-        let send_panel = egui::TopBottomPanel::bottom("send")
-            .resizable(true)
-            .default_height(
-                (self.config.window_height as f32 * self.config.send_panel_ratio)
-                    .clamp(85.0, 350.0),
+            .frame(
+                egui::Frame::new()
+                    .fill(palette::WINDOW)
+                    .inner_margin(egui::Margin::symmetric(8, 0)),
             )
-            .height_range(85.0..=350.0)
+            .show(ctx, |ui| self.status_ui(ui));
+        let screen = ctx.screen_rect();
+        // 与原版一致按窗口比例布局，分隔条自绘，拖动时直接修改比例
+        let send_height = (self.config.send_panel_ratio * (screen.height() - 69.0))
+            .clamp(96.0, (screen.height() * 0.5).max(96.0));
+        egui::TopBottomPanel::bottom("send")
+            .resizable(false)
+            .exact_height(send_height)
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(palette::WINDOW).inner_margin(egui::Margin {
+                left: 4,
+                right: 4,
+                top: 5,
+                bottom: 4,
+            }))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    control_group(ui, |ui| {
-                        segment(ui, &mut self.config.send_mode, "ASCII".into(), "ASCII");
-                        segment(ui, &mut self.config.send_mode, "HEX".into(), "HEX");
-                    });
-                    ui.checkbox(&mut self.crlf, "添加 CRLF");
-                    ui.add_enabled(
-                        self.connected,
-                        egui::Checkbox::new(&mut self.auto_send, "自动发送"),
-                    );
-                    ui.add(
-                        egui::DragValue::new(&mut self.config.auto_send_interval)
-                            .range(100..=60000),
-                    );
-                    ui.label("ms");
-                });
-                ui.horizontal(|ui| {
-                    ui.add_sized(
-                        [
-                            ui.available_width() - 80.0,
-                            (ui.available_height() - 4.0).max(36.0),
-                        ],
-                        egui::TextEdit::multiline(&mut self.send_text)
-                            .hint_text("输入要发送的数据")
-                            .font(egui::TextStyle::Monospace),
-                    );
-                    if ui
-                        .add_enabled(
-                            self.connected,
-                            egui::Button::new("发送").min_size(egui::vec2(65.0, 55.0)),
-                        )
-                        .clicked()
-                    {
-                        self.send(
-                            &self.send_text.clone(),
-                            self.config.send_mode == "HEX",
-                            false,
-                            self.crlf,
-                        );
-                    }
+                let content = ui.max_rect();
+                let splitter = egui::Rect::from_min_max(
+                    egui::pos2(content.left(), content.top() - 5.0),
+                    egui::pos2(content.right(), content.top()),
+                );
+                if let Some(pointer) = splitter_ui(ui, splitter, "send-splitter", false) {
+                    self.config.send_panel_ratio = ((content.bottom() + 4.0 - pointer.y)
+                        / (screen.height() - 69.0).max(1.0))
+                    .clamp(0.12, 0.5);
+                }
+                pane_frame().inner_margin(4.0).show(ui, |ui| {
+                    ui.set_min_size(ui.available_size());
+                    self.send_ui(ui);
                 });
             });
-        let send_ratio = (send_panel.response.rect.height()
-            / self.config.window_height.max(1) as f32)
-            .clamp(0.12, 0.5);
-        if (self.config.send_panel_ratio - send_ratio).abs() > 0.002 {
-            self.config.send_panel_ratio = send_ratio;
-        }
-        if self.config.preset_panel_visible {
-            let panel = egui::SidePanel::right("extended")
-                .resizable(true)
-                .default_width(self.config.window_width as f32 * self.config.extended_panel_ratio)
-                .width_range(65.0..=650.0)
-                .show(ctx, |ui| self.extended_ui(ui));
-            self.config.extended_panel_ratio = (panel.response.rect.width()
-                / self.config.window_width.max(1) as f32)
-                .clamp(0.07, 0.7);
+        let sidebar = self.config.preset_panel_visible;
+        if sidebar {
+            let extended_width = (screen.width() * self.config.extended_panel_ratio)
+                .clamp(60.0, (screen.width() * 0.7).max(60.0));
+            egui::SidePanel::right("extended")
+                .resizable(false)
+                .exact_width(extended_width)
+                .show_separator_line(false)
+                .frame(egui::Frame::new().fill(palette::WINDOW).inner_margin(egui::Margin {
+                    left: 5,
+                    right: 4,
+                    top: 4,
+                    bottom: 0,
+                }))
+                .show(ctx, |ui| {
+                    let content = ui.max_rect();
+                    let splitter = egui::Rect::from_min_max(
+                        egui::pos2(content.left() - 5.0, content.top()),
+                        egui::pos2(content.left(), content.bottom()),
+                    );
+                    if let Some(pointer) = splitter_ui(ui, splitter, "extended-splitter", true) {
+                        self.config.extended_panel_ratio =
+                            ((content.right() + 4.0 - pointer.x) / screen.width().max(1.0)).clamp(0.05, 0.7);
+                    }
+                    pane_frame().show(ui, |ui| {
+                        ui.set_min_size(ui.available_size());
+                        self.extended_ui(ui);
+                    });
+                });
         }
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::WHITE).inner_margin(6.0))
+            .frame(egui::Frame::new().fill(palette::WINDOW).inner_margin(egui::Margin {
+                left: 4,
+                right: if sidebar { 0 } else { 4 },
+                top: 4,
+                bottom: 0,
+            }))
             .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.strong("接收区域");
-                    control_group(ui, |ui| {
-                        for (mode, label) in
-                            [("HEX", "HEX"), ("ASCII", "ASCII"), ("MIXED", "HEX+ASCII")]
-                        {
-                            segment(ui, &mut self.config.display_mode, mode.into(), label);
-                        }
-                    });
-                    ui.checkbox(&mut self.config.auto_scroll, "自动滚动");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if icon_button(ui, "clear", "清空报文并重置收发计数", true).clicked()
-                        {
-                            self.receive.clear();
-                            self.receive_view.clear();
-                            self.counter_baseline = self.events.counters();
-                            self.sent = 0;
-                            self.received = 0;
-                        }
-                        if ui.button("曲线").clicked() {
-                            self.plot.open = true;
-                        }
-                    });
+                pane_frame().show(ui, |ui| {
+                    ui.set_min_size(ui.available_size());
+                    self.receive_ui(ui);
                 });
-                ui.separator();
-                if self.receive_view.ui(
-                    ui,
-                    &self.receive,
-                    &mut self.config.display_ansi,
-                    self.config.auto_scroll,
-                ) {
-                    self.receive.clear();
-                    self.receive_view.clear();
-                    self.counter_baseline = self.events.counters();
-                    self.sent = 0;
-                    self.received = 0;
-                }
             });
         self.dialogs(ctx);
         if self.plot.open {
@@ -1856,121 +2143,590 @@ impl eframe::App for App {
     }
 }
 
-fn control_group(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)) {
+/// 原 WebView 版本的配色（Windows 经典风格）
+mod palette {
+    use eframe::egui::Color32;
+    pub const TEXT: Color32 = Color32::from_rgb(0x20, 0x20, 0x20);
+    pub const LABEL: Color32 = Color32::from_rgb(0x40, 0x40, 0x40);
+    pub const WINDOW: Color32 = Color32::from_rgb(0xf0, 0xf0, 0xf0);
+    pub const BAR: Color32 = Color32::from_rgb(0xf5, 0xf5, 0xf5);
+    pub const BAR_LINE: Color32 = Color32::from_rgb(0xb8, 0xb8, 0xb8);
+    pub const PANE_BORDER: Color32 = Color32::from_rgb(0xa9, 0xa9, 0xa9);
+    pub const TOOLBAR_LINE: Color32 = Color32::from_rgb(0xc8, 0xc8, 0xc8);
+    pub const ROW_LINE: Color32 = Color32::from_rgb(0xe0, 0xe4, 0xe7);
+    pub const BUTTON_BORDER: Color32 = Color32::from_rgb(0xad, 0xad, 0xad);
+    pub const HOVER: Color32 = Color32::from_rgb(0xe5, 0xf1, 0xfb);
+    pub const ACCENT: Color32 = Color32::from_rgb(0x00, 0x78, 0xd4);
+    pub const ACTIVE: Color32 = Color32::from_rgb(0xe1, 0xe1, 0xe1);
+    pub const ACTIVE_BORDER: Color32 = Color32::from_rgb(0x77, 0x77, 0x77);
+    pub const RED: Color32 = Color32::from_rgb(0xf4, 0x43, 0x36);
+    pub const RED_BORDER: Color32 = Color32::from_rgb(0xd7, 0x35, 0x2b);
+    pub const AMBER: Color32 = Color32::from_rgb(0xd9, 0x77, 0x06);
+    pub const AMBER_BORDER: Color32 = Color32::from_rgb(0xb9, 0x61, 0x00);
+    pub const GREEN: Color32 = Color32::from_rgb(0x4c, 0xaf, 0x50);
+    pub const GREEN_BORDER: Color32 = Color32::from_rgb(0x42, 0x98, 0x46);
+    pub const CHECK_GREEN: Color32 = Color32::from_rgb(0x16, 0x86, 0x5a);
+    pub const ICON: Color32 = Color32::from_rgb(0x3c, 0x3c, 0x3c);
+    pub const MUTED: Color32 = Color32::from_rgb(0x66, 0x70, 0x78);
+}
+
+/// 原版常用波特率列表
+const DEFAULT_BAUDRATES: &[&str] = &[
+    "110", "300", "600", "1200", "2400", "4800", "9600", "14400", "19200", "38400", "56000",
+    "57600", "115200", "128000", "230400", "256000", "460800", "500000", "512000", "600000",
+    "750000", "921600", "1000000", "1500000", "2000000", "3000000", "4000000",
+];
+
+fn field_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(egui::RichText::new(text).color(palette::LABEL));
+}
+
+/// 白底 30px 高的下拉框，对应原版 `select`
+fn select_box(
+    ui: &mut egui::Ui,
+    id: &str,
+    width: f32,
+    selected: String,
+    contents: impl FnOnce(&mut egui::Ui),
+) {
+    ui.scope(|ui| {
+        ui.spacing_mut().interact_size.y = 30.0;
+        ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::WHITE;
+        ui.visuals_mut().widgets.inactive.bg_stroke =
+            egui::Stroke::new(1.0_f32, palette::BAR_LINE);
+        egui::ComboBox::from_id_salt(id)
+            .width(width)
+            .height(320.0)
+            .truncate()
+            .selected_text(selected)
+            .show_ui(ui, contents);
+    });
+}
+
+fn bold_family() -> egui::FontFamily {
+    egui::FontFamily::Name("bold".into())
+}
+
+/// 粗体文字（标题、表头），对应原版 `strong`
+fn bold(text: &str) -> egui::RichText {
+    egui::RichText::new(text).family(bold_family())
+}
+
+/// 普通底色、图标加文字的按钮（发送）
+fn labeled_icon_button(ui: &mut egui::Ui, icon: &str, label: &str, size: egui::Vec2) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let enabled = ui.is_enabled();
+    let hovered = response.hovered() && enabled;
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, if hovered { palette::HOVER } else { palette::BAR });
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(1.0_f32, if hovered { palette::ACCENT } else { palette::BUTTON_BORDER }),
+        egui::StrokeKind::Inside,
+    );
+    let color = palette::TEXT;
+    let galley = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(13.0), color);
+    let total = 16.0 + 6.0 + galley.size().x;
+    let left = rect.center().x - total / 2.0;
+    paint_icon(painter, egui::pos2(left + 8.0, rect.center().y), icon, color);
+    painter.galley(
+        egui::pos2(left + 22.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        color,
+    );
+    response
+}
+
+/// 5px 分隔条（原版 `.extended-splitter` / `.send-splitter`），拖动时返回指针位置
+fn splitter_ui(ui: &mut egui::Ui, rect: egui::Rect, id: &str, vertical: bool) -> Option<egui::Pos2> {
+    let response = ui.interact(rect, ui.id().with(id), egui::Sense::drag());
+    let highlight = response.hovered() || response.dragged();
+    ui.painter().rect_filled(
+        rect,
+        0.0,
+        if highlight {
+            palette::ACCENT
+        } else {
+            Color32::from_rgb(0xd5, 0xda, 0xdd)
+        },
+    );
+    if highlight {
+        ui.ctx().set_cursor_icon(if vertical {
+            egui::CursorIcon::ResizeHorizontal
+        } else {
+            egui::CursorIcon::ResizeVertical
+        });
+    }
+    response
+        .dragged()
+        .then(|| response.interact_pointer_pos())
+        .flatten()
+}
+
+fn apply_style(context: &egui::Context) {
+    context.style_mut(|style| {
+        for (text_style, size) in [
+            (egui::TextStyle::Body, 13.0),
+            (egui::TextStyle::Button, 13.0),
+            (egui::TextStyle::Small, 11.0),
+        ] {
+            style
+                .text_styles
+                .insert(text_style, egui::FontId::proportional(size));
+        }
+        style
+            .text_styles
+            .insert(egui::TextStyle::Monospace, egui::FontId::monospace(12.5));
+        style.spacing.item_spacing = egui::vec2(7.0, 4.0);
+        style.spacing.button_padding = egui::vec2(9.0, 5.0);
+        style.spacing.interact_size.y = 28.0;
+        style.spacing.icon_width = 14.0;
+        style.spacing.icon_spacing = 5.0;
+        let visuals = &mut style.visuals;
+        visuals.panel_fill = palette::WINDOW;
+        visuals.window_fill = Color32::WHITE;
+        visuals.extreme_bg_color = Color32::WHITE;
+        visuals.selection.bg_fill = Color32::from_rgb(0xcc, 0xe4, 0xf7);
+        visuals.selection.stroke = egui::Stroke::new(1.0_f32, palette::ACCENT);
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0_f32, palette::BAR_LINE);
+        let widgets = &mut visuals.widgets;
+        widgets.inactive.weak_bg_fill = palette::BAR;
+        widgets.inactive.bg_fill = Color32::WHITE;
+        widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, palette::BUTTON_BORDER);
+        for (state, fill, border) in [
+            (&mut widgets.hovered, palette::HOVER, palette::ACCENT),
+            (
+                &mut widgets.active,
+                Color32::from_rgb(0xcc, 0xe4, 0xf7),
+                Color32::from_rgb(0x00, 0x54, 0x99),
+            ),
+            (&mut widgets.open, palette::HOVER, palette::ACCENT),
+        ] {
+            state.weak_bg_fill = fill;
+            state.bg_fill = fill;
+            state.bg_stroke = egui::Stroke::new(1.0_f32, border);
+            state.expansion = 0.0;
+        }
+        for state in [
+            &mut widgets.noninteractive,
+            &mut widgets.inactive,
+            &mut widgets.hovered,
+            &mut widgets.active,
+            &mut widgets.open,
+        ] {
+            state.corner_radius = egui::CornerRadius::same(2);
+            state.fg_stroke.color = palette::TEXT;
+        }
+    });
+}
+
+/// 白色面板（接收区、扩展发送、发送区）
+fn pane_frame() -> egui::Frame {
     egui::Frame::new()
-        .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(180, 185, 192)))
-        .corner_radius(0.0)
-        .inner_margin(0.0)
-        .fill(Color32::from_rgb(247, 248, 250))
+        .fill(Color32::WHITE)
+        .stroke(egui::Stroke::new(1.0_f32, palette::PANE_BORDER))
+}
+
+/// 面板顶部 33px 灰色工具栏，对应原版 `.pane-toolbar`
+fn pane_toolbar(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)) {
+    let response = egui::Frame::new()
+        .fill(palette::BAR)
+        .inner_margin(egui::Margin::symmetric(6, 2))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
+            ui.set_width(ui.available_width());
+            ui.set_height(29.0);
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
                 contents(ui);
             });
-        });
-}
-
-fn segment<Value: PartialEq>(ui: &mut egui::Ui, value: &mut Value, option: Value, label: &str) {
-    let selected = *value == option;
-    let button = egui::Button::new(label)
-        .fill(if selected {
-            Color32::from_gray(225)
-        } else {
-            Color32::from_gray(245)
         })
-        .stroke(egui::Stroke::new(
-            1.0_f32,
-            Color32::from_gray(if selected { 119 } else { 200 }),
-        ))
-        .min_size(egui::vec2(0.0, 28.0));
-    if ui.add(button).clicked() {
-        *value = option;
-    }
+        .response;
+    ui.painter().hline(
+        response.rect.x_range(),
+        response.rect.bottom() - 0.5,
+        egui::Stroke::new(1.0_f32, palette::TOOLBAR_LINE),
+    );
 }
 
-fn icon_button(ui: &mut egui::Ui, icon: &str, hint: &str, subtle: bool) -> egui::Response {
-    let response = ui.add_sized([29.0, 29.0], egui::Button::new("").frame(!subtle));
-    let center = response.rect.center();
+/// 分段切换按钮组，对应原版 `.mode-switch`；`compact` 对应 `.mode-switch.compact`
+fn mode_switch(
+    ui: &mut egui::Ui,
+    value: &mut String,
+    options: &[(&str, &str)],
+    compact: bool,
+) -> bool {
+    let (height, size, padding) = if compact {
+        (24.0, 12.0, 8.0)
+    } else {
+        (29.0, 13.0, 10.0)
+    };
+    let galleys: Vec<_> = options
+        .iter()
+        .map(|(_, label)| {
+            ui.painter().layout_no_wrap(
+                (*label).to_owned(),
+                egui::FontId::proportional(size),
+                palette::TEXT,
+            )
+        })
+        .collect();
+    let width = galleys
+        .iter()
+        .map(|galley| galley.size().x + padding * 2.0)
+        .sum::<f32>()
+        + options.len().saturating_sub(1) as f32;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+    let enabled = ui.is_enabled();
+    let painter = ui.painter().clone();
+    painter.rect_filled(rect, 2.0, palette::BAR);
+    let mut changed = false;
+    let mut left = rect.left();
+    for (index, ((option, _), galley)) in options.iter().zip(galleys).enumerate() {
+        let item = egui::Rect::from_min_size(
+            egui::pos2(left, rect.top()),
+            egui::vec2(galley.size().x + padding * 2.0, height),
+        );
+        let response = ui.interact(
+            item,
+            ui.id().with(("mode-switch", *option)),
+            egui::Sense::click(),
+        );
+        let selected = value == option;
+        if selected {
+            painter.rect_filled(item, 0.0, palette::ACTIVE);
+            painter.rect_stroke(
+                item.shrink(1.0),
+                0.0,
+                egui::Stroke::new(1.0_f32, palette::ACTIVE_BORDER),
+                egui::StrokeKind::Inside,
+            );
+        } else if response.hovered() && enabled {
+            painter.rect_filled(item, 0.0, palette::HOVER);
+        }
+        painter.galley(item.center() - galley.size() / 2.0, galley, palette::TEXT);
+        if index + 1 < options.len() {
+            painter.vline(
+                item.right() + 0.5,
+                rect.y_range(),
+                egui::Stroke::new(1.0_f32, palette::TOOLBAR_LINE),
+            );
+        }
+        if response.clicked() && !selected {
+            *value = (*option).to_owned();
+            changed = true;
+        }
+        left = item.right() + 1.0;
+    }
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(1.0_f32, palette::BUTTON_BORDER),
+        egui::StrokeKind::Inside,
+    );
+    changed
+}
+
+/// 复选框，选中时为强调色底白色对勾（与原版 Chromium 原生复选框一致）
+fn check(ui: &mut egui::Ui, value: &mut bool, label: &str) -> egui::Response {
+    check_styled(ui, value, label, palette::ACCENT, 14.0)
+}
+
+fn check_styled(
+    ui: &mut egui::Ui,
+    value: &mut bool,
+    label: &str,
+    accent: Color32,
+    size: f32,
+) -> egui::Response {
+    let galley = (!label.is_empty()).then(|| {
+        ui.painter().layout_no_wrap(
+            label.to_owned(),
+            egui::FontId::proportional(13.0),
+            palette::TEXT,
+        )
+    });
+    let text_width = galley.as_ref().map_or(0.0, |galley| galley.size().x + 5.0);
+    let (rect, mut response) = ui.allocate_exact_size(
+        egui::vec2(size + text_width, size.max(20.0)),
+        egui::Sense::click(),
+    );
+    if response.clicked() {
+        *value = !*value;
+        response.mark_changed();
+    }
+    let enabled = ui.is_enabled();
     let painter = ui.painter();
-    let stroke = egui::Stroke::new(1.3_f32, Color32::from_gray(60));
-    let point = |horizontal: f32, vertical: f32| center + egui::vec2(horizontal, vertical);
+    let check_box = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + size / 2.0, rect.center().y),
+        egui::vec2(size, size),
+    );
+    if *value {
+        painter.rect_filled(check_box, 2.0, accent);
+        let point = |x: f32, y: f32| check_box.left_top() + egui::vec2(x, y) * size;
+        painter.add(egui::Shape::line(
+            vec![point(0.22, 0.52), point(0.42, 0.72), point(0.78, 0.30)],
+            egui::Stroke::new(1.8_f32, Color32::WHITE),
+        ));
+    } else {
+        let border = if response.hovered() && enabled {
+            palette::ACCENT
+        } else {
+            Color32::from_rgb(0x76, 0x76, 0x76)
+        };
+        painter.rect_filled(check_box, 2.0, Color32::WHITE);
+        painter.rect_stroke(
+            check_box,
+            2.0,
+            egui::Stroke::new(1.0_f32, border),
+            egui::StrokeKind::Inside,
+        );
+    }
+    if let Some(galley) = galley {
+        let position = egui::pos2(
+            check_box.right() + 5.0,
+            rect.center().y - galley.size().y / 2.0,
+        );
+        painter.galley(position, galley, palette::TEXT);
+    }
+    response
+}
+
+/// 带图标的实心命令按钮（连接 / 断开 / 启动发送），对应原版 `.command-button` / `.run-button`
+fn command_button(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    fill: Color32,
+    border: Color32,
+    height: f32,
+) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::FontId::proportional(13.0),
+        Color32::WHITE,
+    );
+    let width = 12.0 + 16.0 + 6.0 + galley.size().x + 12.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+    let darken = response.hovered() && ui.is_enabled();
+    let shade = |color: Color32| {
+        if darken {
+            Color32::from_rgb(
+                (color.r() as f32 * 0.92) as u8,
+                (color.g() as f32 * 0.92) as u8,
+                (color.b() as f32 * 0.92) as u8,
+            )
+        } else {
+            color
+        }
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, shade(fill));
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(1.0_f32, shade(border)),
+        egui::StrokeKind::Inside,
+    );
+    paint_icon(
+        painter,
+        egui::pos2(rect.left() + 20.0, rect.center().y),
+        icon,
+        Color32::WHITE,
+    );
+    painter.galley(
+        egui::pos2(rect.left() + 34.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        Color32::WHITE,
+    );
+    response
+}
+
+/// 30x30 图标按钮；`subtle` 时无边框，对应原版 `.icon-button.subtle`
+fn icon_button(ui: &mut egui::Ui, icon: &str, hint: &str, subtle: bool) -> egui::Response {
+    icon_button_sized(ui, icon, hint, subtle, false, 30.0)
+}
+
+fn icon_button_sized(
+    ui: &mut egui::Ui,
+    icon: &str,
+    hint: &str,
+    subtle: bool,
+    active: bool,
+    size: f32,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    let enabled = ui.is_enabled();
+    let hovered = response.hovered() && enabled;
+    let painter = ui.painter();
+    let frame = if active {
+        Some((palette::ACTIVE, palette::ACTIVE_BORDER))
+    } else if hovered {
+        Some((palette::HOVER, palette::ACCENT))
+    } else if subtle {
+        None
+    } else {
+        Some((palette::BAR, palette::BUTTON_BORDER))
+    };
+    if let Some((fill, border)) = frame {
+        painter.rect_filled(rect, 2.0, fill);
+        painter.rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0_f32, border),
+            egui::StrokeKind::Inside,
+        );
+    }
+    paint_icon(painter, rect.center(), icon, palette::ICON);
+    response.on_hover_text(hint)
+}
+
+/// 线框图标，形状参考原版使用的 Lucide 图标（16px 网格）
+fn paint_icon(painter: &egui::Painter, center: egui::Pos2, icon: &str, color: Color32) {
+    let stroke = egui::Stroke::new(1.5_f32, color);
+    let point = |x: f32, y: f32| center + egui::vec2(x, y);
     let line = |coordinates: &[(f32, f32)]| {
         painter.add(egui::Shape::line(
-            coordinates
-                .iter()
-                .map(|&(horizontal, vertical)| point(horizontal, vertical))
-                .collect(),
+            coordinates.iter().map(|&(x, y)| point(x, y)).collect(),
             stroke,
         ));
     };
+    let arc = |cx: f32, cy: f32, radius: f32, from: f32, to: f32| -> Vec<egui::Pos2> {
+        (0..=16)
+            .map(|step| {
+                let angle = (from + (to - from) * step as f32 / 16.0).to_radians();
+                point(cx + radius * angle.cos(), cy + radius * angle.sin())
+            })
+            .collect()
+    };
+    let stadium = |a: (f32, f32), b: (f32, f32), radius: f32| {
+        let angle = (b.1 - a.1).atan2(b.0 - a.0).to_degrees();
+        let mut points = arc(b.0, b.1, radius, angle - 90.0, angle + 90.0);
+        points.extend(arc(a.0, a.1, radius, angle + 90.0, angle + 270.0));
+        points.push(points[0]);
+        painter.add(egui::Shape::line(points, stroke));
+    };
     match icon {
         "refresh" => {
-            line(&[
-                (-6.0, -1.0),
-                (-4.0, -5.0),
-                (0.0, -7.0),
-                (5.0, -5.0),
-                (6.0, -2.0),
-            ]);
-            line(&[(2.0, -2.0), (6.0, -2.0), (6.0, -6.0)]);
-            line(&[(6.0, 1.0), (4.0, 5.0), (0.0, 7.0), (-5.0, 5.0), (-6.0, 2.0)]);
-            line(&[(-2.0, 2.0), (-6.0, 2.0), (-6.0, 6.0)]);
+            painter.add(egui::Shape::line(arc(0.0, 0.0, 6.0, 200.0, 340.0), stroke));
+            painter.add(egui::Shape::line(arc(0.0, 0.0, 6.0, 20.0, 160.0), stroke));
+            line(&[(2.5, -2.3), (5.6, -2.0), (6.1, -5.4)]);
+            line(&[(-2.5, 2.3), (-5.6, 2.0), (-6.1, 5.4)]);
         }
         "clear" => {
             line(&[
-                (-6.0, 1.0),
-                (0.0, -6.0),
-                (7.0, 1.0),
+                (-6.5, 1.5),
+                (0.0, -5.0),
+                (6.5, 1.5),
                 (2.0, 6.0),
-                (-1.0, 6.0),
-                (-6.0, 1.0),
+                (-2.0, 6.0),
+                (-6.5, 1.5),
             ]);
-            line(&[(-2.0, -3.0), (5.0, 4.0)]);
-            line(&[(0.0, 7.0), (8.0, 7.0)]);
+            line(&[(-3.0, -1.5), (3.0, 4.5)]);
+            line(&[(2.0, 6.0), (7.0, 6.0)]);
         }
         "settings" => {
-            painter.circle_stroke(center, 5.0, stroke);
-            painter.circle_stroke(center, 2.0, stroke);
+            painter.circle_stroke(center, 4.8, stroke);
+            painter.circle_stroke(center, 1.8, stroke);
             for index in 0..8 {
                 let angle = index as f32 * std::f32::consts::TAU / 8.0;
                 let direction = egui::vec2(angle.cos(), angle.sin());
-                painter.line_segment([center + direction * 5.0, center + direction * 8.0], stroke);
+                painter.line_segment(
+                    [center + direction * 4.8, center + direction * 7.2],
+                    egui::Stroke::new(2.2_f32, color),
+                );
             }
         }
         "help" => {
             painter.circle_stroke(center, 7.0, stroke);
-            painter.text(
-                center,
-                egui::Align2::CENTER_CENTER,
-                "?",
-                egui::FontId::proportional(13.0),
-                Color32::from_gray(60),
-            );
+            painter.add(egui::Shape::line(arc(0.0, -1.6, 2.2, 180.0, 400.0), stroke));
+            line(&[(1.7, -0.2), (0.0, 1.0), (0.0, 1.9)]);
+            painter.circle_filled(point(0.0, 4.1), 0.9, color);
         }
-        "expand" => line(&[(-2.0, -5.0), (3.0, 0.0), (-2.0, 5.0)]),
+        "chevron-right" => line(&[(-2.0, -5.0), (3.0, 0.0), (-2.0, 5.0)]),
+        "chevron-left" => line(&[(2.0, -5.0), (-3.0, 0.0), (2.0, 5.0)]),
+        "chevron-down" => line(&[(-4.0, -2.0), (0.0, 2.0), (4.0, -2.0)]),
         "add" => {
             line(&[(-6.0, 0.0), (6.0, 0.0)]);
             line(&[(0.0, -6.0), (0.0, 6.0)]);
         }
-        "upload" | "download" => {
-            let direction = if icon == "upload" { -1.0 } else { 1.0 };
-            line(&[(0.0, -6.0), (0.0, 4.0)]);
-            line(&[
-                (-4.0, direction * 2.0),
-                (0.0, direction * 6.0),
-                (4.0, direction * 2.0),
-            ]);
-            line(&[(-6.0, 4.0), (-6.0, 7.0), (6.0, 7.0), (6.0, 4.0)]);
+        "minus" => line(&[(-5.0, 0.0), (5.0, 0.0)]),
+        "upload" => {
+            line(&[(0.0, 3.0), (0.0, -6.5)]);
+            line(&[(-3.5, -3.0), (0.0, -6.5), (3.5, -3.0)]);
+            line(&[(-6.5, 3.0), (-6.5, 6.5), (6.5, 6.5), (6.5, 3.0)]);
         }
-        _ => line(&[
-            (-6.0, -5.0),
-            (7.0, 0.0),
-            (-6.0, 6.0),
-            (-2.0, 0.0),
-            (-6.0, -5.0),
-        ]),
+        "download" => {
+            line(&[(0.0, -6.5), (0.0, 3.0)]);
+            line(&[(-3.5, -0.5), (0.0, 3.0), (3.5, -0.5)]);
+            line(&[(-6.5, 3.0), (-6.5, 6.5), (6.5, 6.5), (6.5, 3.0)]);
+        }
+        "up" => {
+            line(&[(0.0, 5.5), (0.0, -5.5)]);
+            line(&[(-4.5, -1.0), (0.0, -5.5), (4.5, -1.0)]);
+        }
+        "down" => {
+            line(&[(0.0, -5.5), (0.0, 5.5)]);
+            line(&[(-4.5, 1.0), (0.0, 5.5), (4.5, 1.0)]);
+        }
+        "trash" => {
+            line(&[(-6.0, -4.0), (6.0, -4.0)]);
+            line(&[(-2.5, -4.0), (-2.5, -6.0), (2.5, -6.0), (2.5, -4.0)]);
+            line(&[(-4.8, -4.0), (-4.0, 6.0), (4.0, 6.0), (4.8, -4.0)]);
+            line(&[(-1.5, -1.0), (-1.5, 3.5)]);
+            line(&[(1.5, -1.0), (1.5, 3.5)]);
+        }
+        "link" => {
+            stadium((-4.2, 4.2), (-0.8, 0.8), 2.6);
+            stadium((0.8, -0.8), (4.2, -4.2), 2.6);
+        }
+        "unlink" => {
+            stadium((-4.6, 4.6), (-2.2, 2.2), 2.4);
+            stadium((2.2, -2.2), (4.6, -4.6), 2.4);
+            line(&[(-1.0, -6.5), (-1.0, -4.5)]);
+            line(&[(-6.5, -1.0), (-4.5, -1.0)]);
+            line(&[(1.0, 6.5), (1.0, 4.5)]);
+            line(&[(6.5, 1.0), (4.5, 1.0)]);
+        }
+        "play" => {
+            painter.add(egui::Shape::convex_polygon(
+                vec![point(-3.5, -5.5), point(5.5, 0.0), point(-3.5, 5.5)],
+                color,
+                egui::Stroke::NONE,
+            ));
+        }
+        "stop" => {
+            painter.rect_filled(
+                egui::Rect::from_center_size(center, egui::vec2(9.0, 9.0)),
+                1.0,
+                color,
+            );
+        }
+        _ => {
+            // Lucide Send：纸飞机
+            line(&[
+                (-6.5, -0.5),
+                (6.5, -6.5),
+                (0.5, 6.5),
+                (-0.8, 0.8),
+                (-6.5, -0.5),
+            ]);
+            line(&[(-0.8, 0.8), (6.5, -6.5)]);
+        }
     }
-    response.on_hover_text(hint)
+}
+
+/// 千分位格式，与原版 `toLocaleString()` 一致
+fn group_digits(value: u64) -> String {
+    let digits = value.to_string();
+    let mut output = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, character) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            output.push(',');
+        }
+        output.push(character);
+    }
+    output
 }
 
 pub(crate) fn dialog_frame(rounded: bool) -> egui::Frame {
@@ -2043,18 +2799,6 @@ fn badge(ui: &mut egui::Ui, label: &str, green: bool) {
         });
 }
 
-fn choices(ui: &mut egui::Ui, name: &str, value: &mut String, values: &[&str]) {
-    ui.label(name);
-    egui::ComboBox::from_id_salt(name)
-        .width(70.0)
-        .selected_text(option_label(value))
-        .show_ui(ui, |ui| {
-            for option in values {
-                ui.selectable_value(value, (*option).into(), option_label(option));
-            }
-        });
-}
-
 fn option_label(value: &str) -> &str {
     match value {
         "None" => "无",
@@ -2091,13 +2835,14 @@ fn font_definitions() -> egui::FontDefinitions {
     let mut database = fontdb::Database::new();
     database.load_system_fonts();
     let mut fonts = egui::FontDefinitions::default();
-    let mut load = |key: &str, families: &[&str]| -> Option<String> {
+    let mut load = |key: &str, families: &[&str], weight: fontdb::Weight| -> Option<String> {
         let names: Vec<_> = families
             .iter()
             .map(|name| fontdb::Family::Name(name))
             .collect();
         let face = database.query(&fontdb::Query {
             families: &names,
+            weight,
             ..Default::default()
         })?;
         database.with_face_data(face, |data, index| {
@@ -2107,10 +2852,23 @@ fn font_definitions() -> egui::FontDefinitions {
         })?;
         Some(key.into())
     };
-    let ui = load("ui", UI);
-    let mono = load("mono", MONO);
-    let cjk = load("cjk", CJK);
-    let symbol = load("symbol", SYMBOL);
+    let ui = load("ui", UI, fontdb::Weight::NORMAL);
+    let ui_bold = load("ui-bold", UI, fontdb::Weight::BOLD);
+    let mono = load("mono", MONO, fontdb::Weight::NORMAL);
+    let cjk = load("cjk", CJK, fontdb::Weight::NORMAL);
+    let cjk_bold = load("cjk-bold", CJK, fontdb::Weight::BOLD);
+    let symbol = load("symbol", SYMBOL, fontdb::Weight::NORMAL);
+    let proportional = fonts
+        .families
+        .get(&egui::FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
+    let bold_chain = [ui_bold, cjk_bold, ui.clone(), cjk.clone(), symbol.clone()]
+        .into_iter()
+        .flatten()
+        .chain(proportional)
+        .collect();
+    fonts.families.insert(bold_family(), bold_chain);
     for (family, primary) in [
         (egui::FontFamily::Proportional, ui),
         (egui::FontFamily::Monospace, mono),
