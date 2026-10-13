@@ -917,14 +917,13 @@ impl App {
                 );
                 check(ui, &mut self.crlf, "添加 CRLF");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label("ms");
-                    ui.add_sized(
-                        [72.0, 25.0],
-                        egui::DragValue::new(&mut self.config.auto_send_interval).range(100..=60000),
-                    );
+                    interval_edit(ui, &mut self.config.auto_send_interval, [96.0, 25.0], "自动发送间隔");
                     ui.add_enabled_ui(self.connected, |ui| {
                         check(ui, &mut self.auto_send, "自动发送");
                     });
+                    if self.auto_send {
+                        countdown_label(ui, self.next_auto, self.config.auto_send_interval);
+                    }
                 });
             });
             ui.add_space(3.0);
@@ -1168,9 +1167,8 @@ impl App {
                             let delay = column(DELAY_COLUMN);
                             ui.put(
                                 egui::Rect::from_center_size(delay.center(), egui::vec2(DELAY_COLUMN - 6.0, 24.0)),
-                                egui::DragValue::new(&mut item.delay).range(0..=600000),
-                            )
-                            .on_hover_text("发送延时（毫秒）");
+                                |ui: &mut egui::Ui| interval_edit(ui, &mut item.delay, [DELAY_COLUMN - 6.0, 24.0], "发送本条后的延时"),
+                            );
                         }
                         let actions = column(actions_column);
                         let hint = if item.comment.trim().is_empty() {
@@ -1255,8 +1253,11 @@ impl App {
                             let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
                             paint_icon(ui.painter(), rect.center(), "help", Color32::from_rgb(0x69, 0x74, 0x7d));
                             response.on_hover_text(
-                                "ASCII 支持 \\r、\\n、\\t、\\0、\\\\、\\xNN 转义；序号 0 不参与发送；序号决定发送顺序；延时单位为毫秒",
+                                "ASCII 支持 \\r、\\n、\\t、\\0、\\\\、\\xNN 转义；序号 0 不参与发送；序号决定发送顺序；延时可输入毫秒数或 1.5s、10m、2h、1d3h 等带单位的时长",
                             );
+                        }
+                        if let Some(item) = self.batch_index.checked_sub(1).and_then(|index| self.batch.get(index)) {
+                            countdown_label(ui, self.batch_due, item.delay);
                         }
                         let (icon, label) = if self.batch.is_empty() {
                             ("play", "启动发送")
@@ -2033,14 +2034,14 @@ impl eframe::App for App {
                 self.crlf,
             );
             self.next_auto =
-                Instant::now() + Duration::from_millis(self.config.auto_send_interval.max(100));
+                Instant::now() + Duration::from_millis(self.config.auto_send_interval.into());
         }
         if !self.batch.is_empty() && Instant::now() >= self.batch_due {
             let item = self.batch[self.batch_index].clone();
             self.send(&item.data, item.is_hex, !item.is_hex, false);
             if !self.batch.is_empty() {
                 self.batch_index += 1;
-                self.batch_due = Instant::now() + Duration::from_millis(item.delay);
+                self.batch_due = Instant::now() + Duration::from_millis(item.delay.into());
                 if self.batch_index >= self.batch.len() {
                     if self.extended.settings.loop_send {
                         self.batch_index = 0;
@@ -2250,6 +2251,146 @@ mod palette {
     pub const CHECK_GREEN: Color32 = Color32::from_rgb(0x16, 0x86, 0x5a);
     pub const ICON: Color32 = Color32::from_rgb(0x3c, 0x3c, 0x3c);
     pub const MUTED: Color32 = Color32::from_rgb(0x66, 0x70, 0x78);
+}
+
+/// 时间间隔输入框（毫秒，0 – u32::MAX），自动发送与扩展发送共用。
+/// 显示为紧凑时长（如 `1m30s`），可直接输入毫秒数或带单位的时长。
+fn interval_edit(ui: &mut egui::Ui, value: &mut u32, size: [f32; 2], name: &str) -> egui::Response {
+    let response = ui.add_sized(
+        size,
+        egui::DragValue::new(value)
+            .range(0..=u32::MAX)
+            .speed(10.0)
+            .custom_formatter(|value, _| format_interval(value as u32))
+            .custom_parser(|text| parse_interval(text).map(f64::from)),
+    );
+    response.on_hover_text(format!(
+        "{name}：{} ms（{}）\n可输入毫秒数，或 500ms、1.5s、10m、2h、1d3h 等时长，最长约 49.7 天",
+        group_digits((*value).into()),
+        describe_interval(*value)
+    ))
+}
+
+/// 间隔较长时显示倒计时，便于确认仍在计时
+fn countdown_label(ui: &mut egui::Ui, due: Instant, interval: u32) {
+    if interval < 2000 {
+        return;
+    }
+    let remaining = due
+        .saturating_duration_since(Instant::now())
+        .as_secs()
+        .min(u64::from(u32::MAX) / 1000) as u32;
+    ui.label(
+        egui::RichText::new(format!("剩余 {}", format_interval(remaining * 1000)))
+            .size(12.0)
+            .color(palette::MUTED),
+    );
+    ui.ctx().request_repaint_after(Duration::from_millis(250));
+}
+
+const INTERVAL_UNITS: [(u64, &str); 4] = [
+    (86_400_000, "d"),
+    (3_600_000, "h"),
+    (60_000, "m"),
+    (1000, "s"),
+];
+
+/// 紧凑时长：`0`、`500ms`、`1.5s`、`1m30s`、`2h`、`1d3h20m`
+fn format_interval(milliseconds: u32) -> String {
+    let mut rest = u64::from(milliseconds);
+    if rest == 0 {
+        return "0".into();
+    }
+    if rest < 1000 {
+        return format!("{rest}ms");
+    }
+    let mut output = String::new();
+    for (size, unit) in INTERVAL_UNITS {
+        let count = rest / size;
+        rest %= size;
+        if unit == "s" {
+            if count > 0 || rest > 0 {
+                output.push_str(&count.to_string());
+                if rest > 0 {
+                    output.push_str(format!(".{rest:03}").trim_end_matches('0'));
+                }
+                output.push('s');
+            }
+        } else if count > 0 {
+            output.push_str(&format!("{count}{unit}"));
+        }
+    }
+    output
+}
+
+fn describe_interval(milliseconds: u32) -> String {
+    let mut rest = u64::from(milliseconds);
+    let mut parts = Vec::new();
+    for (size, unit) in [
+        (86_400_000, "天"),
+        (3_600_000, "小时"),
+        (60_000, "分"),
+        (1000, "秒"),
+        (1, "毫秒"),
+    ] {
+        let count = rest / size;
+        rest %= size;
+        if count > 0 {
+            parts.push(format!("{count} {unit}"));
+        }
+    }
+    if parts.is_empty() {
+        "立即".into()
+    } else {
+        parts.join(" ")
+    }
+}
+
+/// 解析纯毫秒数或 `1d2h3m4.5s`、`500ms`、`2小时30分` 等时长；超出 u32 毫秒时返回 None
+fn parse_interval(text: &str) -> Option<u32> {
+    let text: String = text
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != ',')
+        .collect();
+    if text.is_empty() {
+        return None;
+    }
+    let limit = f64::from(u32::MAX);
+    if let Ok(milliseconds) = text.parse::<f64>() {
+        return (0.0..=limit)
+            .contains(&milliseconds)
+            .then(|| milliseconds.round() as u32);
+    }
+    // 长单位在前，避免“分钟”被“分”、“ms”被“m”提前匹配
+    const UNITS: [(&str, f64); 12] = [
+        ("毫秒", 1.0),
+        ("ms", 1.0),
+        ("小时", 3_600_000.0),
+        ("分钟", 60_000.0),
+        ("天", 86_400_000.0),
+        ("时", 3_600_000.0),
+        ("分", 60_000.0),
+        ("秒", 1000.0),
+        ("d", 86_400_000.0),
+        ("h", 3_600_000.0),
+        ("m", 60_000.0),
+        ("s", 1000.0),
+    ];
+    let mut total = 0.0;
+    let mut rest = text.as_str();
+    while !rest.is_empty() {
+        let digits = rest
+            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(rest.len());
+        let number: f64 = rest[..digits].parse().ok()?;
+        rest = &rest[digits..];
+        let (unit, factor) = UNITS.iter().find(|(unit, _)| rest.starts_with(unit))?;
+        total += number * factor;
+        rest = &rest[unit.len()..];
+    }
+    (total <= limit).then(|| total.round() as u32)
 }
 
 fn compact_connection_bar(width: f32) -> bool {
@@ -3057,7 +3198,27 @@ fn encode(value: &str, hex: bool, escapes: bool, crlf: bool) -> Result<Vec<u8>, 
 
 #[cfg(test)]
 mod tests {
-    use super::encode;
+    use super::{describe_interval, encode, format_interval, parse_interval};
+    #[test]
+    fn interval_formats_and_parses_round_trip() {
+        assert_eq!(format_interval(0), "0");
+        assert_eq!(format_interval(500), "500ms");
+        assert_eq!(format_interval(1500), "1.5s");
+        assert_eq!(format_interval(90_000), "1m30s");
+        assert_eq!(format_interval(97_200_000), "1d3h");
+        assert_eq!(format_interval(u32::MAX), "49d17h2m47.295s");
+        for value in [0, 1, 999, 1500, 90_000, 97_200_000, u32::MAX] {
+            assert_eq!(parse_interval(&format_interval(value)), Some(value));
+        }
+        assert_eq!(parse_interval("1000"), Some(1000));
+        assert_eq!(parse_interval("1.5h"), Some(5_400_000));
+        assert_eq!(parse_interval("2小时30分"), Some(9_000_000));
+        assert_eq!(parse_interval("10 m 5 s"), Some(605_000));
+        assert_eq!(parse_interval("50d"), None);
+        assert_eq!(parse_interval("abc"), None);
+        assert_eq!(describe_interval(3_723_004), "1 小时 2 分 3 秒 4 毫秒");
+    }
+
     #[test]
     fn validates_hex_and_escape_sequences() {
         assert_eq!(encode("0x01, 0203", true, false, false).unwrap(), [1, 2, 3]);

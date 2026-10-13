@@ -8,7 +8,7 @@ Z_COM 是基于 Rust、egui / eframe 的原生跨平台通信工具，支持串�
 - TCP/UDP Client、Server 通信
 - SEGGER J-Link 与 probe-rs 双 RTT 后端
 - HEX、ASCII、HEX+ASCII 与 ANSI 颜色显示
-- 普通发送、自动发送和扩展发送
+- 普通发送、自动发送和扩展发送（间隔支持 0 毫秒到约 49.7 天，可输入 1.5s、10m、2h 等时长）
 - 按日期自动记录通信日志
 - 单可执行文件发布，首次运行后在程序同级目录创建配置、日志和多实例数据
 - Windows / Linux 绿色版运行，无需随程序分发许可证等外置文件

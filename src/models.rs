@@ -15,7 +15,8 @@ pub struct AppConfig {
     pub display_mode: String,
     pub send_mode: String,
     pub auto_scroll: bool,
-    pub auto_send_interval: u64,
+    /// 自动发送间隔（毫秒），0 – u32::MAX
+    pub auto_send_interval: u32,
     pub display_ansi: bool,
     #[serde(alias = "support_jlink")]
     pub support_probes: bool,
@@ -105,7 +106,8 @@ pub struct ExtendedSendItem {
     pub data: String,
     pub is_hex: bool,
     pub comment: String,
-    pub delay: u64,
+    /// 发送本条后等待的时间（毫秒），0 – u32::MAX
+    pub delay: u32,
     pub sort_order: u32,
 }
 
@@ -127,7 +129,7 @@ impl Default for ExtendedSendItem {
 pub struct ExtendedSendSettings {
     pub loop_send: bool,
     pub multi_send: bool,
-    pub default_delay: u64,
+    pub default_delay: u32,
 }
 
 impl Default for ExtendedSendSettings {
