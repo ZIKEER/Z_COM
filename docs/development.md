@@ -3,17 +3,16 @@
 ## 技术栈
 
 - Rust stable
-- Tauri 2
-- Svelte 5 / SvelteKit
-- Node.js 20+
+- egui / eframe（OpenGL，事件驱动刷新）
+- Node.js 20+（可选打包脚本）
 - SEGGER J-Link SDK（可选运行时依赖）
 - probe-rs
 
 ## 目录结构
 
 ```text
-src/                 Svelte 前端
-src-tauri/           Rust 后端与 Tauri 配置
+src/                 原 Svelte 界面，保留作迁移对照
+src-tauri/           Rust 原生界面、通信后端与配置模型
 static/              静态资源
 scripts/             跨平台打包脚本
 docs/                项目文档
@@ -25,14 +24,13 @@ dist/                绿色版输出，不纳入源码版本管理
 
 ## 本地开发
 
-安装依赖并启动 Tauri 开发模式：
+启动原生开发模式：
 
 ```powershell
-npm install
-npm run tauri dev
+cargo run --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-前端单独开发或预览：
+原 Svelte 界面仅用于对照，单独预览：
 
 ```powershell
 npm run dev
@@ -46,8 +44,7 @@ Linux 系统依赖与权限设置见 [Linux 构建与运行](linux.md)。
 优先执行与修改范围最接近的检查，再执行完整构建：
 
 ```powershell
-npm run check
-npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo check --manifest-path src-tauri/Cargo.toml --locked
 ```
@@ -78,7 +75,7 @@ npm run version:set -- 0.1.8
 npm run build:raw
 ```
 
-调用 Tauri `build --no-bundle`，不复制产物。Windows 主程序位于
+调用 Cargo `build --release --locked`，不复制产物。Windows 主程序位于
 `src-tauri/target/release/z-com.exe`，Linux 主程序位于
 `src-tauri/target/release/z-com`。这主要用于底层构建检查，日常通常不直接取用。
 
@@ -109,7 +106,7 @@ dist/
 如果正在从目标目录运行 `Z_COM.exe`，Windows 会锁定该文件，脚本无法覆盖。关闭该实例
 后重新执行命令即可；脚本不会擅自结束正在使用的程序。
 
-打包目录中只有主程序。许可证、NOTICE、第三方声明和前端资源均已编译进主程序，
+打包目录中只有主程序。许可证、NOTICE、第三方声明和窗口图标均已编译进主程序，
 不需要随可执行文件分发外置文件。`config/`、`logs/`、`locks/`、`.update/`
 和多实例目录是程序运行时按需创建的数据，不属于发布包。
 
@@ -154,7 +151,8 @@ Windows 与 WSL 共同访问的项目路径中依次执行，两边会自然归�
 ## 进程与线程模型
 
 - 正常运行时只有一个 `Z_COM` 主进程；一个进程可以同时包含多个操作系统线程。
-- Tauri/WebView、异步运行时、系统组件和阻塞任务线程池会创建或复用线程。
+- egui / eframe 原生窗口使用 OpenGL，不启动浏览器子进程；空闲时等待系统事件。
+- 接收显示只绘制可见行，历史最多 5000 行；待显示积压限制为 2 MiB / 1024 事件，裁剪不影响完整日志和字节计数。
 - 通信管理器为当前连接维护一个工作线程；设备枚举、下载等阻塞操作在后台执行。
 - GitHub 与 Gitee 更新检查会并行查询，相关线程在任务结束后可以退出。
 - 空闲线程在 Windows 中显示为 `Wait` 属于正常状态，表示正在等待事件或新任务，

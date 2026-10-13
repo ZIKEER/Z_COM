@@ -15,10 +15,13 @@
 
 | 平台 | 目标产物 | 外部运行条件 |
 |---|---|---|
-| Windows 10/11 x86_64 | `dist/Z_COM_V版本号/Z_COM.exe` | WebView2；使用 J-Link 时安装 SEGGER Software Pack 或选择 SDK 目录 |
-| Linux x86_64 | `dist/linux-x86_64/Z_COM_V版本号/Z_COM` | WebKitGTK/GTK 运行库；串口和 USB 权限；使用 J-Link 时安装 Linux SDK |
+| Windows 10/11 x86_64 | `dist/Z_COM_V版本号/Z_COM.exe` | OpenGL 驱动；使用 J-Link 时安装 SEGGER SDK |
+| Linux x86_64 | `dist/linux-x86_64/Z_COM_V版本号/Z_COM` | X11/Wayland、OpenGL/Mesa、文件对话框 portal、串口和 USB 权限 |
+| macOS | Cargo 原生构建 | 系统窗口/OpenGL、中文字体和相应 USB 驱动；自动更新尚未提供 macOS 产物 |
 
 ## 当前验证状态
+
+以下旧版验收记录不代表此 egui 分支已完成 Linux/macOS 验收。原生分支的本次验证记录见 [重构验收](native-refactor.md)。
 
 - Windows 开发、前端检查、前端构建、Rust 测试和单文件绿色版打包已通过。
 - Ubuntu 24.04 WSL2 原生依赖安装、前端检查、前端构建、Rust 测试和 release 打包已通过。
@@ -49,7 +52,7 @@
 
 ### Windows 专项
 
-- WebView2 可用与缺失场景。
+- OpenGL 驱动、远程桌面与旧显卡兼容性。
 - J-Link SDK 自动发现与手动选择。
 - 绿色版目录迁移后配置、日志和多实例数据保持正确。
 

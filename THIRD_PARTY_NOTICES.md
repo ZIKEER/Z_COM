@@ -14,9 +14,15 @@ source code and license texts for JavaScript packages are available from
 
 | Component | License |
 | --- | --- |
-| Tauri and Tauri plugins | Apache-2.0 OR MIT |
-| Svelte and SvelteKit | MIT |
-| Lucide Svelte | ISC |
+| egui, eframe, egui_plot, winit and glutin | Apache-2.0 OR MIT |
+| rfd and fontdb | MIT |
+| crossbeam-channel and regex | Apache-2.0 OR MIT |
+| image | Apache-2.0 OR MIT |
+
+The archived reference frontend uses Svelte/SvelteKit (MIT), Tauri (Apache-2.0 OR MIT), and Lucide (ISC); these are not linked into the native executable.
+
+| Component | License |
+| --- | --- |
 | probe-rs | Apache-2.0 OR MIT |
 | serialport | MPL-2.0 |
 | reqwest | Apache-2.0 OR MIT |

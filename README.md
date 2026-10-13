@@ -1,6 +1,6 @@
 # Z_COM
 
-Z_COM 是基于 Rust、Tauri 2 和 Svelte 5 的跨平台通信工具，支持串口、TCP/UDP 与调试探针 RTT。
+Z_COM 是基于 Rust、egui / eframe 的原生跨平台通信工具，支持串口、TCP/UDP 与调试探针 RTT。此分支已移除运行时 WebView；原 Svelte 页面保留供界面对照。
 
 ## 主要能力
 
@@ -16,18 +16,16 @@ Z_COM 是基于 Rust、Tauri 2 和 Svelte 5 的跨平台通信工具，支持串
 
 ## 快速开始
 
-开发环境需要 Node.js 20+、Rust stable，以及对应平台的 Tauri 系统依赖。
+开发环境需要 Rust stable 和对应平台的原生窗口/OpenGL 依赖。Node.js 仅用于可选的打包与版本管理脚本。
 
 ```powershell
-npm install
-npm run tauri dev
+cargo run --manifest-path src-tauri/Cargo.toml --locked
 ```
 
 检查与测试：
 
 ```powershell
-npm run check
-npm run build
+cargo check --manifest-path src-tauri/Cargo.toml --locked
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 ```
 

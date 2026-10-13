@@ -8,17 +8,17 @@ Ubuntu 24.04：
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential curl file libayatana-appindicator3-dev \
-  librsvg2-dev libssl-dev libudev-dev libusb-1.0-0-dev \
-  libwebkit2gtk-4.1-dev libxdo-dev pkg-config
+sudo apt install -y build-essential curl file pkg-config libudev-dev \
+  libusb-1.0-0-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
+  libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev \
+  fonts-noto-cjk xdg-desktop-portal
 ```
 
 安装 Node.js 20+、Rust stable 后，在项目目录执行：
 
 ```bash
 npm ci
-npm run check
-npm run build
+cargo check --manifest-path src-tauri/Cargo.toml --locked
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 npm run pack
 ```
@@ -27,18 +27,18 @@ npm run pack
 
 ## 运行依赖
 
-程序界面依赖系统 WebKitGTK/GTK。若发行版拆分开发包和运行包，只需为最终用户安装对应运行库，不需要 Rust、Node.js 或编译工具链。
+程序界面使用原生 X11/Wayland 与 OpenGL。文件对话框使用桌面 portal；最终用户不需要 WebKitGTK、Rust、Node.js 或编译工具链。
 
-Wayland 和 X11 均由 GTK/WebKitGTK 提供。个别桌面环境如遇 WebView 显示问题，可临时使用以下命令判断是否为 Wayland 兼容问题：
+Wayland 和 X11 由 winit 提供。桌面兼容问题可通过选择对应登录会话验证：
 
 ```bash
-GDK_BACKEND=x11 ./Z_COM
+./Z_COM
 ```
 
 WSLg 中如果 Mesa/Zink 无法初始化，可仅在诊断时强制软件渲染：
 
 ```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 ./Z_COM
+LIBGL_ALWAYS_SOFTWARE=1 ./Z_COM
 ```
 
 该参数是 WSLg 图形兼容性方案，不应默认用于真实 Linux 桌面。
