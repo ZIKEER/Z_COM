@@ -2,7 +2,7 @@ use crate::{
     event_sink::EventSink,
     logger::Logger,
     models::{AppConfig, ConnectRequest, DeviceEntry, ExtendedSendConfig, ExtendedSendItem},
-    native_tasks::{Task, TaskResult, Tasks},
+    ui::tasks::{Task, TaskResult, Tasks},
     storage,
     transport::TransportManager,
 };
@@ -15,7 +15,7 @@ use std::{
 };
 
 pub fn run() {
-    let icon = image::load_from_memory(include_bytes!("../icons/128x128.png"))
+    let icon = image::load_from_memory(include_bytes!("../../assets/icons/128x128.png"))
         .ok()
         .map(|image| {
             let image = image.into_rgba8();
@@ -58,24 +58,24 @@ pub fn run() {
 }
 
 struct App {
-    plot: crate::native_plot::NativePlot,
+    plot: crate::ui::plot::NativePlot,
     config: AppConfig,
     extended: ExtendedSendConfig,
     directory: PathBuf,
     instance: Option<crate::InstanceAllocation>,
     transport: Arc<Mutex<TransportManager>>,
-    events: crate::native_events::Inbox,
+    events: crate::ui::events::Inbox,
     tasks: Tasks,
     scanning: bool,
     targets: Vec<String>,
     addresses: Vec<String>,
     sdk_status: String,
     live_baud_draft: String,
-    counter_baseline: crate::native_events::Counters,
+    counter_baseline: crate::ui::events::Counters,
     sink: EventSink,
     devices: Vec<DeviceEntry>,
-    receive: VecDeque<crate::native_terminal::Line>,
-    receive_view: crate::native_receive::ReceiveView,
+    receive: VecDeque<crate::ui::terminal::Line>,
+    receive_view: crate::ui::receive::ReceiveView,
     send_text: String,
     connected: bool,
     connecting: Option<Instant>,
@@ -130,7 +130,7 @@ impl App {
         let fonts = font_definitions();
         cc.egui_ctx.set_fonts(fonts);
         apply_style(&cc.egui_ctx);
-        let image = image::load_from_memory(include_bytes!("../icons/128x128.png"))
+        let image = image::load_from_memory(include_bytes!("../../assets/icons/128x128.png"))
             .map_err(|error| error.to_string())?
             .into_rgba8();
         let logo = cc.egui_ctx.load_texture(
@@ -155,7 +155,7 @@ impl App {
         let logger = Arc::new(Mutex::new(Some(
             Logger::new(&root).map_err(|error| format!("无法创建通信日志: {error}"))?,
         )));
-        let events = crate::native_events::Inbox::default();
+        let events = crate::ui::events::Inbox::default();
         let sender = events.clone();
         let context = cc.egui_ctx.clone();
         let sink = EventSink::new(directory.clone(), move |event| {
@@ -196,7 +196,7 @@ impl App {
             update_busy: false,
             update_status: "可手动检查 GitHub / Gitee 新版本".into(),
             update_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            plot: crate::native_plot::NativePlot::default(),
+            plot: crate::ui::plot::NativePlot::default(),
             draft: config.clone(),
             config,
             extended,
@@ -393,7 +393,7 @@ impl App {
         }
     }
 
-    fn append(&mut self, lines: Vec<crate::native_terminal::Line>) {
+    fn append(&mut self, lines: Vec<crate::ui::terminal::Line>) {
         for line in lines {
             self.receive.push_back(line);
             while self.receive.len() > 5000 {
@@ -434,7 +434,7 @@ impl App {
                 if event.direction == "received" {
                     self.plot.consume(&event.bytes);
                 }
-                self.append(crate::native_terminal::data_lines(
+                self.append(crate::ui::terminal::data_lines(
                     &stamp,
                     event.direction == "received",
                     &event.bytes,
@@ -442,7 +442,7 @@ impl App {
                     self.config.display_ansi,
                 ));
             } else if !event.message.is_empty() {
-                self.append(vec![crate::native_terminal::event_line(
+                self.append(vec![crate::ui::terminal::event_line(
                     &stamp,
                     &event.kind,
                     &event.message,

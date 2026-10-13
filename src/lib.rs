@@ -1,16 +1,11 @@
-mod egui_app;
 mod event_sink;
 mod logger;
 mod models;
-mod native_events;
-mod native_plot;
-mod native_receive;
-mod native_tasks;
-mod native_terminal;
 mod panic_hook;
 mod segger;
 mod storage;
 mod transport;
+mod ui;
 mod update;
 mod update_apply;
 mod update_download;
@@ -285,5 +280,5 @@ pub fn install_panic_hook() {
 }
 pub fn run() {
     update_apply::schedule_cleanup();
-    egui_app::run();
+    ui::app::run();
 }

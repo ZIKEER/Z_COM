@@ -162,9 +162,9 @@ impl NativePlot {
             );
         });
         if self.rule_dialog {
-            let response = egui::Modal::new(egui::Id::new("plot-rules")).frame(super::egui_app::dialog_frame(true).fill(egui::Color32::WHITE).corner_radius(6.0)).show(ui.ctx(), |ui| {
+            let response = egui::Modal::new(egui::Id::new("plot-rules")).frame(super::app::dialog_frame(true).fill(egui::Color32::WHITE).corner_radius(6.0)).show(ui.ctx(), |ui| {
                 ui.set_width(700.0_f32.min(ui.ctx().screen_rect().width()-48.0));
-                super::egui_app::dialog_header(ui,"规则配置",&mut self.rule_dialog);
+                super::app::dialog_header(ui,"规则配置",&mut self.rule_dialog);
                 ui.label("每行一条规则，用 {字段名} 提取数值；支持 :int、:hex、:hex0x 和转义字符。示例：temp={温度},voltage={电压}\\r\\n");
                 ui.add(egui::TextEdit::multiline(&mut self.rule_draft).desired_width(f32::INFINITY).desired_rows(12).min_size(egui::vec2(0.0,220.0)).font(egui::TextStyle::Monospace));
                 if !self.error.is_empty() { ui.colored_label(egui::Color32::DARK_RED,&self.error); }

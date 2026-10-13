@@ -7,12 +7,8 @@ edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/ZIKEER/Z_COM"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# 库名与二进制名区分，避免 Windows 上产物文件名冲突（rust-lang/cargo#8519）
 name = "z_com_lib"
 crate-type = ["rlib"]
 

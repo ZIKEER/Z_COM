@@ -1,4 +1,4 @@
-use crate::native_terminal::Line;
+use crate::ui::terminal::Line;
 use eframe::egui::{self, Color32, Sense};
 use std::{collections::VecDeque, sync::Arc};
 
@@ -155,7 +155,7 @@ impl ReceiveView {
     }
 
     fn line_layout(ui: &egui::Ui, line: &Line, ansi: bool, width: f32) -> LineLayout {
-        let parts = crate::native_terminal::layout_parts(line, ansi);
+        let parts = crate::ui::terminal::layout_parts(line, ansi);
         let shape = |mut job: egui::text::LayoutJob, max_width: f32| {
             job.wrap.max_width = max_width;
             ui.fonts(|fonts| fonts.layout_job(job))
