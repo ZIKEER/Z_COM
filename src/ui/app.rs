@@ -89,6 +89,7 @@ struct App {
     legal_open: bool,
     legal_tab: usize,
     baud_open: bool,
+    extended_help: bool,
     baud_error: String,
     logo: egui::TextureHandle,
     preview_mode: bool,
@@ -180,6 +181,7 @@ impl App {
             legal_open: false,
             legal_tab: 0,
             baud_open: false,
+            extended_help: false,
             baud_error: String::new(),
             tasks,
             scanning: false,
@@ -1250,11 +1252,40 @@ impl App {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if !tiny {
-                            let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-                            paint_icon(ui.painter(), rect.center(), "help", Color32::from_rgb(0x69, 0x74, 0x7d));
-                            response.on_hover_text(
-                                "ASCII 支持 \\r、\\n、\\t、\\0、\\\\、\\xNN 转义；序号 0 不参与发送；序号决定发送顺序；延时可输入毫秒数或 1.5s、10m、2h、1d3h 等带单位的时长",
-                            );
+                            // 悬停显示说明；单击后固定显示，再次单击或点击其他位置关闭
+                            let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+                            let color = if response.hovered() || self.extended_help {
+                                palette::ACCENT
+                            } else {
+                                Color32::from_rgb(0x69, 0x74, 0x7d)
+                            };
+                            paint_icon(ui.painter(), rect.center(), "help", color);
+                            let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+                            let toggled = response.clicked();
+                            if toggled {
+                                self.extended_help = !self.extended_help;
+                            }
+                            if self.extended_help {
+                                let area = egui::Area::new(ui.make_persistent_id("extended-help"))
+                                    .order(egui::Order::Foreground)
+                                    .pivot(egui::Align2::RIGHT_BOTTOM)
+                                    .fixed_pos(rect.right_top() + egui::vec2(0.0, -4.0))
+                                    .show(ui.ctx(), |ui| {
+                                        egui::Frame::popup(ui.style()).show(ui, extended_help);
+                                    });
+                                let outside = ui.input(|input| {
+                                    input.pointer.any_pressed()
+                                        && input
+                                            .pointer
+                                            .interact_pos()
+                                            .is_some_and(|position| !area.response.rect.contains(position) && !rect.contains(position))
+                                });
+                                if outside && !toggled {
+                                    self.extended_help = false;
+                                }
+                            } else {
+                                response.on_hover_ui(extended_help);
+                            }
                         }
                         if let Some(item) = self.batch_index.checked_sub(1).and_then(|index| self.batch.get(index)) {
                             countdown_label(ui, self.batch_due, item.delay);
@@ -2251,6 +2282,22 @@ mod palette {
     pub const CHECK_GREEN: Color32 = Color32::from_rgb(0x16, 0x86, 0x5a);
     pub const ICON: Color32 = Color32::from_rgb(0x3c, 0x3c, 0x3c);
     pub const MUTED: Color32 = Color32::from_rgb(0x66, 0x70, 0x78);
+}
+
+/// 扩展发送使用说明（原版“?”提示内容，补充延时时长说明）
+fn extended_help(ui: &mut egui::Ui) {
+    ui.set_max_width(380.0);
+    ui.label(bold("扩展发送说明"));
+    for line in [
+        "ASCII 支持 \\r、\\n、\\t、\\0、\\\\、\\xNN 转义；勾选 HEX 时按十六进制字节发送，例如 01 03 00 00。",
+        "序号 0 不参与“启动发送”；按序号从小到大发送，序号不能重复。",
+        "延时为发送本条后等待的时间，到时再发下一条；勾选“循环发送”时，最后一条的延时即两轮之间的间隔。",
+        "延时可输入毫秒数，或 500ms、1.5s、10m、2h、1d3h、2小时30分 等带单位的时长，范围 0 – 4294967295 ms（约 49.7 天）。",
+        "延时不少于 2 秒时，按钮旁显示下一条的剩余时间；断开连接或关闭程序后停止发送。",
+        "点击每行的发送图标可单独发送该条；勾选“多条发送”时“启动发送”依次发送所有序号非 0 的条目，不勾选时只发送序号最小的一条。",
+    ] {
+        ui.label(format!("•  {line}"));
+    }
 }
 
 /// 时间间隔输入框（毫秒，0 – u32::MAX），自动发送与扩展发送共用。
