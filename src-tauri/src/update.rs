@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, atomic::AtomicBool},
-    thread,
-    time::Duration,
-};
+use std::{collections::HashMap, thread, time::Duration};
 
 use reqwest::blocking::Client;
 use semver::Version;
@@ -23,13 +18,6 @@ pub(crate) struct ResolvedUpdate {
     pub(crate) sha256: String,
     pub(crate) download_url: String,
     pub(crate) fallback_url: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct UpdateState {
-    pub(crate) candidate: Option<ResolvedUpdate>,
-    pub(crate) downloaded_path: Option<std::path::PathBuf>,
-    pub(crate) cancel_download: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

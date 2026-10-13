@@ -8,8 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::event_sink::EventSink as AppHandle;
 use libloading::Library;
-use tauri::AppHandle;
 
 use crate::{
     models::{ConnectRequest, DeviceEntry},

@@ -36,11 +36,14 @@ impl Logger {
             "→"
         };
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-        let hex = bytes
-            .iter()
-            .map(|byte| format!("{byte:02X}"))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let mut hex = String::with_capacity(bytes.len().saturating_mul(3));
+        use std::fmt::Write as _;
+        for (index, byte) in bytes.iter().enumerate() {
+            if index > 0 {
+                hex.push(' ');
+            }
+            let _ = write!(hex, "{byte:02X}");
+        }
         let ascii = display_ascii(bytes);
         let _ = writeln!(
             self.writer,

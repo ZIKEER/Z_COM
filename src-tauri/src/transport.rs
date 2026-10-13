@@ -12,6 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::event_sink::EventSink as AppHandle;
 use probe_rs::{
     Permissions,
     config::Registry,
@@ -19,11 +20,9 @@ use probe_rs::{
     rtt::Rtt,
 };
 use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
-use tauri::{AppHandle, Emitter, Manager};
 
 use crate::models::{ConnectRequest, SerialSettings, TransportEvent};
 
-const EVENT_NAME: &str = "transport-event";
 const READ_BUFFER_SIZE: usize = 8192;
 const FRAME_EMIT_THRESHOLD: usize = 4096;
 
@@ -620,11 +619,7 @@ fn run_probe_rtt(
     probe
         .set_speed(request.probe_speed)
         .map_err(probe_driver_error)?;
-    let target_directory = app
-        .try_state::<crate::AppState>()
-        .ok_or("无法读取应用状态")?
-        .config_directory
-        .join("probe_rs_targets");
+    let target_directory = app.config_directory.join("probe_rs_targets");
     let (registry, custom_targets) = load_probe_registry(&target_directory)?;
     let mut session = probe
         .attach_with_registry(
@@ -930,24 +925,12 @@ pub(crate) fn emit(
     message: impl Into<String>,
 ) {
     let message = message.into();
-    if let Some(state) = app.try_state::<crate::AppState>() {
-        if let Ok(mut logger) = state.logger.lock() {
-            if kind == "data" {
-                logger.log_data(direction, &bytes);
-            } else if !message.is_empty() {
-                logger.log_event(&message);
-            }
-        }
-    }
-    let _ = app.emit(
-        EVENT_NAME,
-        TransportEvent {
-            kind: kind.into(),
-            direction: direction.into(),
-            bytes,
-            message,
-        },
-    );
+    app.dispatch(TransportEvent {
+        kind: kind.into(),
+        direction: direction.into(),
+        bytes,
+        message,
+    });
 }
 
 #[cfg(test)]
@@ -1050,5 +1033,99 @@ flash_algorithms: []
             TransportManager::default().send(Vec::new()).unwrap_err(),
             "发送数据不能为空"
         );
+    }
+
+    fn socket_request(port: u16, protocol: &str, role: &str) -> crate::models::ConnectRequest {
+        crate::models::ConnectRequest {
+            transport: "socket".into(),
+            device_id: String::new(),
+            baud_rate: 115200,
+            data_bits: 8,
+            stop_bits: 1.0,
+            parity: "None".into(),
+            flow_control: "None".into(),
+            frame_timeout: 5,
+            socket_host: "127.0.0.1".into(),
+            socket_port: port,
+            socket_protocol: protocol.into(),
+            socket_role: role.into(),
+            probe_chip: String::new(),
+            probe_speed: 4000,
+            probe_reset: false,
+            jlink_sdk_path: String::new(),
+        }
+    }
+
+    fn wait_for(
+        events: &std::sync::mpsc::Receiver<crate::models::TransportEvent>,
+        kind: &str,
+        direction: &str,
+    ) -> crate::models::TransportEvent {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            let event = events
+                .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                .expect("通信事件超时");
+            assert_ne!(event.kind, "error", "{}", event.message);
+            if event.kind == kind && (direction.is_empty() || event.direction == direction) {
+                return event;
+            }
+        }
+    }
+
+    #[test]
+    fn native_sink_preserves_tcp_client_receive_send_and_disconnect() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                .unwrap();
+            stream.write_all(b"incoming").unwrap();
+            let mut bytes = [0; 8];
+            stream.read_exact(&mut bytes).unwrap();
+            assert_eq!(&bytes, b"outgoing");
+        });
+        let (sender, events) = std::sync::mpsc::channel();
+        let sink = crate::event_sink::EventSink::new(std::path::PathBuf::new(), move |event| {
+            let _ = sender.send(event);
+        });
+        let mut manager = TransportManager::default();
+        manager
+            .connect(sink, socket_request(port, "TCP", "Client"))
+            .unwrap();
+        wait_for(&events, "connected", "");
+        assert_eq!(wait_for(&events, "data", "received").bytes, b"incoming");
+        manager.send(b"outgoing".to_vec()).unwrap();
+        assert_eq!(wait_for(&events, "data", "sent").bytes, b"outgoing");
+        manager.disconnect();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_sink_preserves_udp_client_receive_and_send() {
+        let server = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        server
+            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .unwrap();
+        let port = server.local_addr().unwrap().port();
+        let (sender, events) = std::sync::mpsc::channel();
+        let sink = crate::event_sink::EventSink::new(std::path::PathBuf::new(), move |event| {
+            let _ = sender.send(event);
+        });
+        let mut manager = TransportManager::default();
+        manager
+            .connect(sink, socket_request(port, "UDP", "Client"))
+            .unwrap();
+        wait_for(&events, "connected", "");
+        manager.send(b"request".to_vec()).unwrap();
+        let mut buffer = [0; 32];
+        let (size, peer) = server.recv_from(&mut buffer).unwrap();
+        assert_eq!(&buffer[..size], b"request");
+        server.send_to(b"reply", peer).unwrap();
+        assert_eq!(wait_for(&events, "data", "received").bytes, b"reply");
+        manager.disconnect();
     }
 }

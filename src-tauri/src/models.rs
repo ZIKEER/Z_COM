@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub transport_mode: String,
@@ -79,7 +79,7 @@ impl Default for AppConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ExtendedSendConfig {
     pub items: Vec<ExtendedSendItem>,
@@ -95,7 +95,7 @@ impl Default for ExtendedSendConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ExtendedSendItem {
     pub id: u64,
@@ -119,7 +119,7 @@ impl Default for ExtendedSendItem {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ExtendedSendSettings {
     pub loop_send: bool,
@@ -186,17 +186,4 @@ pub struct TransportEvent {
     pub direction: String,
     pub bytes: Vec<u8>,
     pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BootstrapData {
-    pub config: AppConfig,
-    pub extended: ExtendedSendConfig,
-    pub version: String,
-    pub build_timestamp: u64,
-    pub data_directory: String,
-    pub probe_target_directory: String,
-    pub instance_id: u32,
-    pub update_notice: String,
 }

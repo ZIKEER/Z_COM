@@ -8,18 +8,18 @@ use std::{
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter};
+
+pub(crate) trait ProgressSink {
+    fn report(&self, percent: u8, source: &str);
+}
+
+impl<F: Fn(u8, &str)> ProgressSink for F {
+    fn report(&self, percent: u8, source: &str) {
+        self(percent, source);
+    }
+}
 
 use crate::update::{ResolvedUpdate, build_client};
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateProgress {
-    downloaded: u64,
-    total: u64,
-    percent: u8,
-    source: String,
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +31,7 @@ pub(crate) struct DownloadedUpdate {
 }
 
 pub(crate) fn download(
-    app: &AppHandle,
+    app: &impl ProgressSink,
     candidate: &ResolvedUpdate,
     cancel: &AtomicBool,
 ) -> Result<(DownloadedUpdate, PathBuf), String> {
@@ -86,7 +86,7 @@ pub(crate) fn download(
 }
 
 fn download_from(
-    app: &AppHandle,
+    app: &impl ProgressSink,
     candidate: &ResolvedUpdate,
     source: &str,
     url: &str,
@@ -124,15 +124,7 @@ fn download_from(
         }
         let percent =
             ((downloaded.saturating_mul(100) / candidate.asset_size.max(1)).min(100)) as u8;
-        let _ = app.emit(
-            "update-progress",
-            UpdateProgress {
-                downloaded,
-                total: candidate.asset_size,
-                percent,
-                source: source.to_string(),
-            },
-        );
+        app.report(percent, source);
     }
     file.flush()
         .map_err(|error| format!("刷新更新文件失败: {error}"))?;
