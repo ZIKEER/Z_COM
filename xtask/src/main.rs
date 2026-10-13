@@ -103,9 +103,12 @@ fn executable_name(base: &str) -> String {
     format!("{base}{}", env::consts::EXE_SUFFIX)
 }
 
+/// 构建产物目录，遵循 `CARGO_TARGET_DIR`（如 WSL 中把编译缓存放在 Linux 文件系统以免与 Windows 共用）
 fn release_executable() -> PathBuf {
-    root()
-        .join("target")
+    env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .map(|directory| if directory.is_absolute() { directory } else { root().join(directory) })
+        .unwrap_or_else(|| root().join("target"))
         .join("release")
         .join(executable_name("z-com"))
 }

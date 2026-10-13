@@ -143,6 +143,12 @@ dist/release/v版本号/
 和 `instance_N/` 也会被清理，最终目录只保留可发布文件。
 因为正式产物要求平台原生构建，Windows 不能单独生成经过验收的 Linux 程序。可以在
 Windows 与 WSL 共同访问的项目路径中依次执行，两边会自然归集到同一个 `dist` 目录。
+在 WSL 中建议把编译缓存放到 Linux 文件系统，避免与 Windows 的 `target/` 混用且编译更快：
+
+```bash
+cd /mnt/e/路径/z_com
+CARGO_TARGET_DIR=$HOME/.cache/z_com-target cargo xtask pack-release
+```
 
 `release-manifest.json` 包含版本、平台、固定文件名、大小和 SHA-256，可将目录内三个
 文件一起上传到 GitHub/Gitee Release。它是在线升级所需的 Release 元数据，不是最终
