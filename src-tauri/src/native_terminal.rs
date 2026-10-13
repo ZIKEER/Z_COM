@@ -183,19 +183,40 @@ fn split_lines(content: &str) -> Vec<String> {
 }
 
 pub(crate) fn layout(line: &Line, ansi: bool) -> LayoutJob {
-    layout_job(line, ansi, false)
+    layout_job(&line.spans, ansi, false)
 }
 
-/// 粗体叠加层：与 `layout` 字形位置完全一致，仅粗体片段可见。
-/// 等宽字体的粗体字宽不同会破坏对齐，因此以偏移重绘模拟原版的 font-weight。
-pub(crate) fn bold_overlay(line: &Line, ansi: bool) -> LayoutJob {
-    layout_job(line, ansi, true)
+/// 一行拆成两段排版：前缀（时间戳、箭头、标签或续行缩进）与正文（最后一个片段）。
+/// 正文单独按剩余宽度换行，使自动换行的续行对齐到正文列（悬挂缩进）。
+pub(crate) struct Parts {
+    pub prefix: LayoutJob,
+    pub body: LayoutJob,
+    /// 粗体叠加层，字形位置与 `prefix` / `body` 完全一致，仅粗体片段可见。
+    /// 等宽字体的粗体字宽不同会破坏对齐，因此以偏移重绘模拟原版的 font-weight。
+    pub prefix_bold: LayoutJob,
+    pub body_bold: LayoutJob,
 }
 
-fn layout_job(line: &Line, ansi: bool, overlay: bool) -> LayoutJob {
+pub(crate) fn layout_parts(line: &Line, ansi: bool) -> Parts {
+    let split = line.spans.len().saturating_sub(1);
+    let (prefix, body) = line.spans.split_at(split);
+    let mut parts = Parts {
+        prefix: layout_job(prefix, ansi, false),
+        body: layout_job(body, ansi, false),
+        prefix_bold: layout_job(prefix, ansi, true),
+        body_bold: layout_job(body, ansi, true),
+    };
+    // 终端式换行：排满整行再折行，避免长单词前出现孤立的 `[`
+    for job in [&mut parts.body, &mut parts.body_bold] {
+        job.wrap.break_anywhere = true;
+    }
+    parts
+}
+
+fn layout_job(spans: &[(Style, String)], ansi: bool, overlay: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
     job.wrap.max_width = f32::INFINITY;
-    for (style, text) in &line.spans {
+    for (style, text) in spans {
         let format = TextFormat {
             font_id: FontId::monospace(12.5),
             color: style.color(),
@@ -359,6 +380,20 @@ mod tests {
             .spans
             .iter()
             .all(|(style, _)| *style == Style::Data));
+    }
+
+    #[test]
+    fn prefix_and_body_split_matches_plain_text() {
+        let mut lines = data_lines("10:00:00.000", true, b"head
+next line", "ASCII", true);
+        lines.push(event_line("10:00:00.000", "error", "boom"));
+        for line in &lines {
+            let parts = layout_parts(line, true);
+            assert_eq!(format!("{}{}", parts.prefix.text, parts.body.text), line.plain());
+            assert!(parts.body.wrap.break_anywhere);
+        }
+        assert_eq!(layout_parts(&lines[0], true).body.text, "head␊");
+        assert_eq!(layout_parts(&lines[1], true).prefix.text, " ".repeat(24));
     }
 
     #[test]
