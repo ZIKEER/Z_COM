@@ -45,7 +45,7 @@ release-manifest.json
 }
 ```
 
-Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env!("CARGO_PKG_VERSION")` 为准，发布前必须确保 `package.json`、`package-lock.json`、`Cargo.toml` 和 `Cargo.lock` 一致（使用 `npm run version:set` 统一修改）。
+Release tag 使用 `v主版本.次版本.修订版本`。运行时版本以 `env!("CARGO_PKG_VERSION")` 为准，发布前必须确保 `Cargo.toml` 和 `Cargo.lock` 一致（使用 `cargo xtask version` 统一修改）。
 
 ## 检查与选择
 

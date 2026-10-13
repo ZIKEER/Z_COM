@@ -4,7 +4,6 @@
 
 - Rust stable
 - egui / eframe（OpenGL，事件驱动刷新）
-- Node.js 20+（可选打包脚本）
 - SEGGER J-Link SDK（可选运行时依赖）
 - probe-rs
 
@@ -24,7 +23,8 @@ src/
 ├── models.rs        配置与事件模型
 ├── storage.rs       配置文件读写
 └── update*.rs       在线检查、下载与替换升级
-scripts/             版本、打包与界面截图脚本
+xtask/               打包与版本管理工具（cargo xtask）
+scripts/             界面截图与模拟点击调试脚本（PowerShell）
 docs/                项目文档
 LICENSE              Apache-2.0 完整许可文本
 NOTICE               项目版权与声明
@@ -57,13 +57,11 @@ cargo check --locked
 版本只需要通过一个命令修改：
 
 ```powershell
-npm run version:set -- 0.1.8
+cargo xtask version 0.3.1
 ```
 
 该命令接受带或不带 `v` 的语义化版本号，并同步修改：
 
-- `package.json`
-- `package-lock.json`
 - `Cargo.toml`
 - `Cargo.lock` 中的 `z-com` 根包
 
@@ -74,7 +72,7 @@ npm run version:set -- 0.1.8
 ### 原始构建
 
 ```powershell
-npm run build
+cargo build --release --locked
 ```
 
 调用 Cargo `build --release --locked`，不复制产物。Windows 主程序位于
@@ -84,7 +82,7 @@ npm run build
 ### Windows 日常开发包
 
 ```powershell
-npm run pack:win
+cargo xtask pack-win
 ```
 
 该命令只允许在 Windows 执行，先完成 release 构建，再自动复制为：
@@ -95,7 +93,7 @@ dist/
     └── Z_COM.exe
 ```
 
-无需再从 `target/release/` 手动复制。原有 `npm run pack` 仍保留为
+无需再从 `target/release/` 手动复制。`cargo xtask pack` 为
 当前平台便携包命令；Linux 执行时输出：
 
 ```text
@@ -120,13 +118,13 @@ dist/
 Windows x86_64 环境执行：
 
 ```powershell
-npm run pack:release
+cargo xtask pack-release
 ```
 
 然后在 Linux x86_64 环境进入同一工作区，再执行：
 
 ```bash
-npm run pack:release
+cargo xtask pack-release
 ```
 
 每次命令都会原生构建当前平台，并直接写入同一个版本目录。Windows 与 Linux
@@ -160,17 +158,12 @@ Windows 与 WSL 共同访问的项目路径中依次执行，两边会自然归�
 - 空闲线程在 Windows 中显示为 `Wait` 属于正常状态，表示正在等待事件或新任务，
   不等于卡死。是否异常应结合持续 CPU 占用、界面响应和日志判断。
 
-## 版本一致性
+## 版本与许可证
 
-所有构建脚本都会在构建前检查以下版本一致：
+版本号只保存在 `Cargo.toml`，程序运行时通过 `CARGO_PKG_VERSION` 读取；使用
+`cargo xtask version 新版本号` 修改后无需人工同步。
 
-- `package.json`
-- `Cargo.toml`
-
-正常情况下使用 `npm run version:set -- 新版本号` 后无需人工同步。
-
-许可证字段也必须保持一致：`package.json` 和 `Cargo.toml` 均使用
-`Apache-2.0`。版权标识使用 `ZIKEER`；不要在发布材料中加入个人法定姓名。
+`Cargo.toml` 的许可证字段使用 `Apache-2.0`。版权标识使用 `ZIKEER`；不要在发布材料中加入个人法定姓名。
 
 ## 文档维护
 

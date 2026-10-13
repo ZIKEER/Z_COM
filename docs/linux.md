@@ -14,20 +14,19 @@ sudo apt install -y build-essential curl file pkg-config libudev-dev \
   fonts-noto-cjk xdg-desktop-portal
 ```
 
-安装 Node.js 20+、Rust stable 后，在项目目录执行：
+安装 Rust stable 后，在项目目录执行：
 
 ```bash
-npm ci
 cargo check --locked
 cargo test --locked
-npm run pack
+cargo xtask pack
 ```
 
 绿色版输出到 `dist/linux-x86_64/Z_COM_V版本号/Z_COM`。打包脚本会设置可执行权限；整个版本目录必须放在当前用户可写的位置，因为配置、日志、实例锁和自定义 MCU 描述都保存在程序同级目录。
 
 ## 运行依赖
 
-程序界面使用原生 X11/Wayland 与 OpenGL。文件对话框使用桌面 portal；最终用户不需要 WebKitGTK、Rust、Node.js 或编译工具链。
+程序界面使用原生 X11/Wayland 与 OpenGL。文件对话框使用桌面 portal；最终用户不需要 WebKitGTK、Rust 或编译工具链。
 
 Wayland 和 X11 由 winit 提供。桌面兼容问题可通过选择对应登录会话验证：
 

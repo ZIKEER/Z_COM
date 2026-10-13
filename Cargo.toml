@@ -35,6 +35,10 @@ fontdb = "0.23"
 regex = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+[workspace]
+# xtask：打包与版本管理工具，通过 `cargo xtask <命令>` 调用，不参与主程序构建
+members = ["xtask"]
+
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
 

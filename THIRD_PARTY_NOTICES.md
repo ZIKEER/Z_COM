@@ -4,11 +4,9 @@ Z_COM includes and links to third-party open-source software. Those components
 remain subject to their respective licenses; the Apache License 2.0 for Z_COM
 does not replace or modify those licenses.
 
-Exact resolved versions are recorded in `package-lock.json` and
-`Cargo.lock`. Source code and license texts for Rust packages are
-available from [crates.io](https://crates.io/) and their linked repositories;
-source code and license texts for JavaScript packages are available from
-[npm](https://www.npmjs.com/) and their linked repositories.
+Exact resolved versions are recorded in `Cargo.lock`. Source code and license
+texts for Rust packages are available from [crates.io](https://crates.io/) and
+their linked repositories.
 
 ## Principal Runtime Components
 

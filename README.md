@@ -16,7 +16,7 @@ Z_COM 是基于 Rust、egui / eframe 的原生跨平台通信工具，支持串�
 
 ## 快速开始
 
-开发环境需要 Rust stable 和对应平台的原生窗口/OpenGL 依赖。Node.js 仅用于可选的打包与版本管理脚本。
+开发环境只需要 Rust stable 和对应平台的原生窗口/OpenGL 依赖，打包与版本管理也通过 `cargo xtask` 完成。
 
 ```powershell
 cargo run --locked
@@ -29,27 +29,27 @@ cargo check --locked
 cargo test --locked
 ```
 
-统一修改版本号（自动同步 npm、Cargo 及锁文件）：
+统一修改版本号（同步 Cargo.toml 与 Cargo.lock）：
 
 ```powershell
-npm run version:set -- 0.1.8
+cargo xtask version 0.3.1
 ```
 
 三种构建方式：
 
 ```powershell
 # 1. 原始构建，仅输出到 target/release/
-npm run build
+cargo build --release --locked
 
 # 2. Windows 日常开发包，输出到 dist/Z_COM_V版本号/Z_COM.exe
-npm run pack:win
+cargo xtask pack-win
 
 # 3. 当前平台发布包，直接归集到 dist/release/v版本号/
-npm run pack:release
+cargo xtask pack-release
 ```
 
 Release 必须分别在 Windows x86_64 和 Linux x86_64 的同一工作区执行一次
-`npm run pack:release`。第二个平台完成后脚本自动生成包含两个平台大小和 SHA-256 的
+`cargo xtask pack-release`。第二个平台完成后脚本自动生成包含两个平台大小和 SHA-256 的
 `release-manifest.json`，整个过程不需要手动复制文件。详细说明见
 [开发、检查与打包](docs/development.md)。
 
@@ -63,7 +63,7 @@ Release 必须分别在 Windows x86_64 和 Linux x86_64 的同一工作区执行
 - [自定义 probe-rs MCU](docs/custom-probe-rs-targets.md)
 - [功能状态与开发路线图](docs/roadmap.md)
 
-当前版本以 `package.json` 和 `Cargo.toml` 中一致的版本号为准。正式功能状态、验收范围和
+当前版本以 `Cargo.toml` 中的版本号为准。正式功能状态、验收范围和
 暂不支持项以[路线图](docs/roadmap.md)为准。
 
 ## 许可证

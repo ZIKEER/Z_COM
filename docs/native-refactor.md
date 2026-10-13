@@ -33,4 +33,4 @@
 低配电脑持续高速串口、旧显卡/远程桌面、真实 J-Link/probe-rs RTT、Linux/macOS 桌面以及正式 Release 自更新。当前平台自动更新仅支持原有 Windows/Linux x86_64；macOS 不宣称可自动更新。ANSI 粗体目前使用加宽字距近似；时间戳与标签的粗体以偏移重绘模拟，均不是独立粗体字形。
 
 运行：`cargo run --locked`。
-打包：`npm run pack:win` 输出到 `dist/Z_COM_V版本号/Z_COM.exe`，详见[开发、检查与打包](development.md)。
+打包：`cargo xtask pack-win` 输出到 `dist/Z_COM_V版本号/Z_COM.exe`，详见[开发、检查与打包](development.md)。
