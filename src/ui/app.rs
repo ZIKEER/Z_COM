@@ -854,8 +854,26 @@ impl App {
         });
     }
 
+    /// 运行中的倒计时：自动发送的下次时间，或扩展发送下一条的剩余延时
+    fn countdown_text(&self) -> Option<String> {
+        if self.auto_send && self.connected {
+            let remaining = remaining_interval(self.next_auto);
+            return Some(format!("自动发送 · 下次 {}", format_interval(remaining)));
+        }
+        if !self.batch.is_empty() {
+            let next = self.batch.get(self.batch_index).map_or(0, |item| item.sort_order);
+            let remaining = remaining_interval(self.batch_due);
+            return Some(format!("扩展发送 · 第 {next} 条 剩余 {}", format_interval(remaining)));
+        }
+        None
+    }
+
     fn status_ui(&mut self, ui: &mut egui::Ui) {
         let small = |text: &str| egui::RichText::new(text).size(12.0).color(palette::LABEL);
+        // 运行中需要定时刷新倒计时
+        if self.countdown_text().is_some() {
+            ui.ctx().request_repaint_after(Duration::from_millis(100));
+        }
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 7.0;
             let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
@@ -885,6 +903,11 @@ impl App {
             };
             ui.label(small(&target))
                 .on_hover_text(self.directory.display().to_string());
+            // 倒计时紧跟连接信息显示在左侧，运行中始终可见
+            if let Some(text) = self.countdown_text() {
+                ui.separator();
+                ui.label(egui::RichText::new(text).size(12.0).strong().color(palette::ACCENT));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(small(&format!("v{}", env!("CARGO_PKG_VERSION"))));
                 ui.label(small(&format!("接收 {} B", group_digits(self.received))));
@@ -923,9 +946,6 @@ impl App {
                     ui.add_enabled_ui(self.connected, |ui| {
                         check(ui, &mut self.auto_send, "自动发送");
                     });
-                    if self.auto_send {
-                        countdown_label(ui, self.next_auto, self.config.auto_send_interval);
-                    }
                 });
             });
             ui.add_space(3.0);
@@ -1286,9 +1306,6 @@ impl App {
                             } else {
                                 response.on_hover_ui(extended_help);
                             }
-                        }
-                        if let Some(item) = self.batch_index.checked_sub(1).and_then(|index| self.batch.get(index)) {
-                            countdown_label(ui, self.batch_due, item.delay);
                         }
                         let (icon, label) = if self.batch.is_empty() {
                             ("play", "启动发送")
@@ -2318,21 +2335,10 @@ fn interval_edit(ui: &mut egui::Ui, value: &mut u32, size: [f32; 2], name: &str)
     ))
 }
 
-/// 间隔较长时显示倒计时，便于确认仍在计时
-fn countdown_label(ui: &mut egui::Ui, due: Instant, interval: u32) {
-    if interval < 2000 {
-        return;
-    }
-    let remaining = due
-        .saturating_duration_since(Instant::now())
-        .as_secs()
-        .min(u64::from(u32::MAX) / 1000) as u32;
-    ui.label(
-        egui::RichText::new(format!("剩余 {}", format_interval(remaining * 1000)))
-            .size(12.0)
-            .color(palette::MUTED),
-    );
-    ui.ctx().request_repaint_after(Duration::from_millis(250));
+/// 距离到期的剩余时间，精确到 0.1 秒，超过上限时按上限显示
+fn remaining_interval(due: Instant) -> u32 {
+    let millis = due.saturating_duration_since(Instant::now()).as_millis();
+    ((millis / 100) * 100).min(u128::from(u32::MAX)) as u32
 }
 
 const INTERVAL_UNITS: [(u64, &str); 4] = [
@@ -2929,6 +2935,10 @@ fn paint_icon(painter: &egui::Painter, center: egui::Pos2, icon: &str, color: Co
         "chevron-right" => line(&[(-2.0, -5.0), (3.0, 0.0), (-2.0, 5.0)]),
         "chevron-left" => line(&[(2.0, -5.0), (-3.0, 0.0), (2.0, 5.0)]),
         "chevron-down" => line(&[(-4.0, -2.0), (0.0, 2.0), (4.0, -2.0)]),
+        "close" => {
+            line(&[(-6.0, -6.0), (6.0, 6.0)]);
+            line(&[(6.0, -6.0), (-6.0, 6.0)]);
+        }
         "add" => {
             line(&[(-6.0, 0.0), (6.0, 0.0)]);
             line(&[(0.0, -6.0), (0.0, 6.0)]);
@@ -3030,10 +3040,7 @@ pub(crate) fn dialog_header(ui: &mut egui::Ui, title: &str, open: &mut bool) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(title).size(15.0).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .add_sized([28.0, 28.0], egui::Button::new("×").frame(false))
-                .clicked()
-            {
+            if icon_button_sized(ui, "close", "关闭", true, false, 32.0).clicked() {
                 *open = false;
             }
         });
