@@ -194,24 +194,38 @@ impl ReceiveView {
         }
     }
 
+    /// 偏移离开底部超过 1 像素视为用户主动向上滚动
+    fn scrolled_away(offset: f32, max_offset: f32) -> bool {
+        offset < max_offset - 1.0
+    }
+
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
         lines: &VecDeque<Line>,
         ansi: &mut bool,
-        auto_scroll: bool,
+        auto_scroll: &mut bool,
     ) -> bool {
         let context = ui.ctx().clone();
         let mut clear = false;
         let viewport = ui.available_rect_before_wrap();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .stick_to_bottom(auto_scroll && !self.dragging)
+        let width = ui.available_width().max(40.0);
+        let view_height = ui.available_height();
+        // 先同步行高，再决定本帧偏移：跟随时贴底，否则保持锚点行不动
+        self.sync_heights(ui, lines, width, *ansi);
+        let total: f32 = self.heights.iter().sum();
+        let max_offset = (total - view_height).max(0.0);
+        // 跟随 = 勾选“自动滚动”且不在拖选中；拖选时保持当前位置，松开后继续跟随
+        let follow = *auto_scroll && !self.dragging;
+        // 取消跟随时不指定偏移：画面保持当前位置，新数据只往下追加；
+        // 超过 5000 行时旧行被裁掉，内容随之上移
+        let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
+        if follow {
+            area = area.vertical_scroll_offset(max_offset);
+        }
+        let output = area
             .show_viewport(ui, |ui, visible| {
-                let width = ui.available_width().max(40.0);
-                self.sync_heights(ui, lines, width, *ansi);
                 let origin = ui.max_rect().min;
-                let total: f32 = self.heights.iter().sum();
                 ui.set_min_size(egui::vec2(width, total));
                 let pointer = context.input(|input| input.pointer.interact_pos());
                 let mut top = 0.0;
@@ -307,6 +321,12 @@ impl ReceiveView {
                     }
                 }
             });
+        let offset = output.state.offset.y;
+        // 跟随时画面被用户滚离底部（滚轮、滚动条、键盘）：取消勾选，之后保持当前位置
+        if follow && !self.dragging && Self::scrolled_away(offset, max_offset) {
+            *auto_scroll = false;
+            ui.ctx().request_repaint();
+        }
         if !context.input(|input| input.pointer.primary_down()) {
             self.dragging = false;
         }
@@ -341,6 +361,16 @@ impl ReceiveView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_moving_away_from_bottom_counts_as_scrolling_up() {
+        // 在底部（含 1 像素误差）不算滚动；离开底部才算
+        assert!(!ReceiveView::scrolled_away(980.0, 980.0));
+        assert!(!ReceiveView::scrolled_away(979.5, 980.0));
+        assert!(ReceiveView::scrolled_away(900.0, 980.0));
+        // 内容不足一屏时最大偏移为 0，永远不算滚动
+        assert!(!ReceiveView::scrolled_away(0.0, 0.0));
+    }
+
     #[test]
     fn selection_survives_scrolling_and_trimming_and_uses_unicode_positions() {
         let mut view = ReceiveView::default();

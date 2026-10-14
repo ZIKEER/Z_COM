@@ -1022,7 +1022,7 @@ impl App {
                     ui,
                     &self.receive,
                     &mut self.config.display_ansi,
-                    self.config.auto_scroll,
+                    &mut self.config.auto_scroll,
                 );
             });
         if clear {
