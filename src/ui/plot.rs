@@ -924,8 +924,11 @@ impl NativePlot {
         );
 
         if let Some(position) = response.hover_pos() {
-            let near = (position.x - left).abs() < 6.0 || (position.x - right).abs() < 6.0;
-            ui.ctx().set_cursor_icon(if near {
+            let left_dist = (position.x - left).abs();
+            let right_dist = (position.x - right).abs();
+            let near_left = left_dist <= 4.0 && left_dist < right_dist;
+            let near_right = right_dist <= 4.0 && right_dist < left_dist;
+            ui.ctx().set_cursor_icon(if near_left || near_right {
                 egui::CursorIcon::ResizeHorizontal
             } else if position.x > left && position.x < right {
                 egui::CursorIcon::Grab
@@ -937,9 +940,12 @@ impl NativePlot {
         if response.drag_started() {
             if let Some(position) = pointer {
                 let time = to_time(position.x);
-                self.timeline_drag = Some(if (position.x - left).abs() < 6.0 {
+                let left_dist = (position.x - left).abs();
+                let right_dist = (position.x - right).abs();
+                // 边界拖动的判定：距离边界4像素以内，且距离该边界比另一边界更近
+                self.timeline_drag = Some(if left_dist <= 4.0 && left_dist < right_dist {
                     TimelineDrag::Start
-                } else if (position.x - right).abs() < 6.0 {
+                } else if right_dist <= 4.0 && right_dist < left_dist {
                     TimelineDrag::End
                 } else if position.x > left && position.x < right {
                     TimelineDrag::Move(time - self.range.0)

@@ -1,0 +1,78 @@
+name: GD32E23x Series
+generated_from_pack: false
+pack_file_release: 1.0.0
+variants:
+- name: GD32E235KB
+  cores:
+  - name: main
+    type: armv8m
+    core_access_options: !Arm
+      ap: !v1 0
+
+  memory_map:
+  - !Nvm
+    name: IROM1
+    range:
+      start: 0x8000000
+      end: 0x8020000
+    cores:
+    - main
+    access:
+      boot: true
+  - !Ram
+    name: IRAM1
+    range:
+      start: 0x20000000
+      end: 0x20002000
+    cores:
+    - main
+
+- name: GD32E235CB
+  cores:
+  - name: main
+    type: armv8m
+    core_access_options: !Arm
+      ap: !v1 0
+
+  memory_map:
+  - !Nvm
+    name: IROM1
+    range:
+      start: 0x8000000
+      end: 0x8020000
+    cores:
+    - main
+    access:
+      boot: true
+  - !Ram
+    name: IRAM1
+    range:
+      start: 0x20000000
+      end: 0x20002000
+    cores:
+    - main
+
+- name: GD32E235C8
+  cores:
+  - name: main
+    type: armv8m
+    core_access_options: !Arm
+      ap: !v1 0
+
+  memory_map:
+  - !Nvm
+    name: IROM1
+    range:
+      start: 0x8000000
+      end: 0x8010000
+    cores:
+    - main
+    access:
+      boot: true
+  - !Ram
+    name: IRAM1
+    range:
+      start: 0x20000000
+      end: 0x20002000
+    cores:
+    - main
