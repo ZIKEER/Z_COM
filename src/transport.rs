@@ -641,7 +641,9 @@ fn run_probe_rtt(
         .parse()
         .map_err(|error| format!("调试探针标识无效: {error}"))?;
     let lister = Lister::new();
-    let mut probe = lister.open(selector).map_err(probe_driver_error)?;
+    let mut probe = lister
+        .open(selector)
+        .map_err(|error| format!("打开调试探针失败: {error:?}"))?;
     probe
         .select_protocol(WireProtocol::Swd)
         .map_err(probe_driver_error)?;
@@ -656,7 +658,7 @@ fn run_probe_rtt(
             Permissions::default(),
             &registry,
         )
-        .map_err(|error| format!("连接目标芯片失败: {error}"))?;
+        .map_err(|error| format!("连接目标芯片失败: {error:?}"))?;
 
     if request.probe_reset {
         session
