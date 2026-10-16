@@ -854,7 +854,7 @@ fn yaml_files(directory: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn probe_driver_error(error: probe_rs::probe::DebugProbeError) -> String {
-    let message = format!("调试探针访问失败: {error}");
+    let message = format!("调试探针访问失败: {error:?}");
     #[cfg(target_os = "windows")]
     return format!(
         "{message}。部分非 J-Link 探针需要 WinUSB 驱动；切换驱动前请评估与厂商工具的兼容性"

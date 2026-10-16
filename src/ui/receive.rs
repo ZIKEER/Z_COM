@@ -194,7 +194,8 @@ impl ReceiveView {
         }
     }
 
-    /// 偏移离开底部超过 1 像素视为用户主动向上滚动
+    /// 判断是否滚离底部（用于测试）
+    #[allow(dead_code)]
     fn scrolled_away(offset: f32, max_offset: f32) -> bool {
         offset < max_offset - 1.0
     }
@@ -223,7 +224,7 @@ impl ReceiveView {
         if follow {
             area = area.vertical_scroll_offset(max_offset);
         }
-        let output = area
+        let _output = area
             .show_viewport(ui, |ui, visible| {
                 let origin = ui.max_rect().min;
                 ui.set_min_size(egui::vec2(width, total));
@@ -321,12 +322,8 @@ impl ReceiveView {
                     }
                 }
             });
-        let offset = output.state.offset.y;
-        // 跟随时画面被用户滚离底部（滚轮、滚动条、键盘）：取消勾选，之后保持当前位置
-        if follow && !self.dragging && Self::scrolled_away(offset, max_offset) {
-            *auto_scroll = false;
-            ui.ctx().request_repaint();
-        }
+        // 移除自动取消勾选逻辑：用户手动滚动后保持勾选状态
+        // 允许临时查看历史，用户需显式点击勾选框来停止自动滚动
         if !context.input(|input| input.pointer.primary_down()) {
             self.dragging = false;
         }
